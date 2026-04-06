@@ -1,0 +1,170 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{22169C3E-388F-4BF0-BA27-4423D0B1EF8C}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Example</RootNamespace>
+    <AssemblyName>Example</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.VisualStudio.QualityTools.UnitTestFramework, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>DLL\Microsoft.VisualStudio.QualityTools.UnitTestFramework.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=13.0.1.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>DLL\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="NHibernate, Version=4.0.0.4000, Culture=neutral, PublicKeyToken=aa95f207798dfdb4, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>DLL\NHibernate.dll</HintPath>
+    </Reference>
+    <Reference Include="NLog, Version=4.0.0.0, Culture=neutral, PublicKeyToken=5120e14c03d0593c, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>DLL\NLog.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Engine.cs" />
+    <Compile Include="OPUS\Attributes\BasicEmailAttribute.cs" />
+    <Compile Include="OPUS\Attributes\EmailDomainResolvableAttribute.cs" />
+    <Compile Include="OPUS\Attributes\EmailDomainWhitelistAttribute.cs" />
+    <Compile Include="OPUS\Attributes\EmailLengthAndFormatAttribute.cs" />
+    <Compile Include="OPUS\Attributes\EnumValueAttribute.cs" />
+    <Compile Include="OPUS\Attributes\FutureDateAttribute.cs" />
+    <Compile Include="OPUS\Attributes\NotInPastAttribute.cs" />
+    <Compile Include="OPUS\Attributes\PastDateAttribute.cs" />
+    <Compile Include="OPUS\Attributes\PositiveNumberAttribute.cs" />
+    <Compile Include="OPUS\Attributes\StrictEmailAttribute.cs" />
+    <Compile Include="OPUS\Attributes\ValidUUIDAttribute.cs" />
+    <Compile Include="OPUS\Exceptions\ApiAuthorizationException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiNotFoundException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiRateLimitException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiRequestException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiResponseException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiServerErrorException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiServerException.cs" />
+    <Compile Include="OPUS\Exceptions\ApiValidationException.cs" />
+    <Compile Include="OPUS\Exceptions\CircuitBreakerOpenException.cs" />
+    <Compile Include="OPUS\Exceptions\HttpStatusException.cs" />
+    <Compile Include="OPUS\HttpClientExtensions.cs" />
+    <Compile Include="OPUS\Models\AccountSegmentDelta.cs" />
+    <Compile Include="OPUS\Models\AmountValue.cs" />
+    <Compile Include="OPUS\Models\AssetAtMarketplaceDetail.cs" />
+    <Compile Include="OPUS\Models\AssetCompositionPatchPayload.cs" />
+    <Compile Include="OPUS\Models\AssetEdge.cs" />
+    <Compile Include="OPUS\Models\AssetNode.cs" />
+    <Compile Include="OPUS\Models\AssetQuote.cs" />
+    <Compile Include="OPUS\Models\AssetQuotePatch.cs" />
+    <Compile Include="OPUS\Models\Assets.cs" />
+    <Compile Include="OPUS\Models\AssetsData.cs" />
+    <Compile Include="OPUS\Models\AssetsQueryResponse.cs" />
+    <Compile Include="OPUS\Models\AssetTreeTypes.cs" />
+    <Compile Include="OPUS\Models\ComponentInfocs.cs" />
+    <Compile Include="OPUS\Models\CompositionMember.cs" />
+    <Compile Include="OPUS\Models\GraphQLError.cs" />
+    <Compile Include="OPUS\Models\GraphQLRequest.cs" />
+    <Compile Include="OPUS\Models\GraphQLResponse.cs" />
+    <Compile Include="OPUS\Models\OpusApiResponse.cs" />
+    <Compile Include="OPUS\Models\OpusTokenResponse.cs" />
+    <Compile Include="OPUS\Models\OpuxErrorDetail.cs" />
+    <Compile Include="OPUS\Models\OpuxWarningDetail.cs" />
+    <Compile Include="OPUS\Models\Pagination.cs" />
+    <Compile Include="OPUS\Models\Portfolio.cs" />
+    <Compile Include="OPUS\Models\PortfolioData.cs" />
+    <Compile Include="OPUS\Models\QuoteGetResource.cs" />
+    <Compile Include="OPUS\Models\QuotePatchResource.cs" />
+    <Compile Include="OPUS\Models\QuotePostResource.cs" />
+    <Compile Include="OPUS\Models\ReportHolding.cs" />
+    <Compile Include="OPUS\Models\RetryPolicy.cs" />
+    <Compile Include="OPUS\Models\SwapAccountValuation.cs" />
+    <Compile Include="OPUS\Models\SwapAccountValuationPatch.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaFetchRequest.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaFetchResponse.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaInfo.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaMember.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaMemberDetail.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaUpdate.cs" />
+    <Compile Include="OPUS\Models\SwapDeltaUpdateResponse.cs" />
+    <Compile Include="OPUS\Models\SwapNominalPatch.cs" />
+    <Compile Include="OPUS\Models\SwapPatch.cs" />
+    <Compile Include="OPUS\Models\SwapQuoteData.cs" />
+    <Compile Include="OPUS\Models\SwapValidationResult.cs" />
+    <Compile Include="OPUS\Models\Symbol.cs" />
+    <Compile Include="OPUS\Models\TotalReturnSwapResponse.cs" />
+    <Compile Include="OPUS\Models\TradeCurrency.cs" />
+    <Compile Include="OPUS\Models\ValidationResultOpus.cs" />
+    <Compile Include="OPUS\Models\WeightObject.cs" />
+    <Compile Include="OPUS\OpusApiClient.cs" />
+    <Compile Include="OPUS\OpusCircuitBreaker.cs" />
+    <Compile Include="OPUS\OpusConfiguration.cs" />
+    <Compile Include="OPUS\OpusGraphQLClient.cs" />
+    <Compile Include="OPUS\OpusHttpClientHandler.cs" />
+    <Compile Include="OPUS\OpusTokenProvider.cs" />
+    <Compile Include="OPUS\OpusWeightUpdateProcessor.cs" />
+    <Compile Include="OPUS\TestDelayService.cs" />
+    <Compile Include="OPUS\Tests\FakeEngine.cs" />
+    <Compile Include="OPUS\Tests\FakeHttpMessageHandler.cs" />
+    <Compile Include="OPUS\Tests\FakeLogger.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusApiClient.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusCircuitBreaker.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusConfiguration.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusGraphQLClient.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusHttpClientHandler.cs" />
+    <Compile Include="OPUS\Tests\FakeRetryPolicy.cs" />
+    <Compile Include="OPUS\Tests\FakeTokenProvider.cs" />
+    <Compile Include="OPUS\Utilities\JsonSerializerSettingsProvider.cs" />
+    <Compile Include="OPUS\Utilities\OpisIsoDateTimeConverter.cs" />
+    <Compile Include="OPUS\Utilities\TimeZoneHelper.cs" />
+    <Compile Include="PercentageHelper.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <None Include="OPUS\Cert\api.pfx" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="DLL\Microsoft.VisualStudio.QualityTools.UnitTestFramework.dll" />
+    <Content Include="DLL\Newtonsoft.Json.dll" />
+    <Content Include="DLL\NHibernate.dll" />
+    <Content Include="DLL\NLog.dll" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
