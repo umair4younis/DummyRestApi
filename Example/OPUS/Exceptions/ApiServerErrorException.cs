@@ -1,7 +1,7 @@
 ﻿using System.Net;
 
 
-namespace Example.OPUS.Exceptions
+namespace Puma.MDE.OPUS.Exceptions
 {
     public class ApiServerErrorException : ApiRequestException
     {

@@ -1,4 +1,4 @@
-﻿using Example.OPUS.Tests;
+﻿using Puma.MDE.OPUS.Tests;
 using System;
 using System.IO;
 using System.Net;
@@ -6,7 +6,7 @@ using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     public class OpusHttpClientHandler
     {

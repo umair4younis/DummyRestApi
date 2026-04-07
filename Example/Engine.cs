@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using NLog;
 
 
-namespace Example
+namespace Puma.MDE
 {
     [ClassInterface(ClassInterfaceType.AutoDual)]
     [Guid("520C0EBE-7BCA-431f-9AD6-85A92DD11B65")]

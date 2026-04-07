@@ -1,5 +1,5 @@
 ﻿
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     public class ReportHolding
     {
@@ -9,7 +9,7 @@ namespace Example.OPUS.Models
 
         public decimal MarketWeightPercent { get; set; }
 
-        public long Nominal { get; set; }
+        public decimal Nominal { get; set; }
 
         public string Currency { get; set; }
 

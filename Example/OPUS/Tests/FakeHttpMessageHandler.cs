@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 
 
-namespace Example.OPUS.Test
+namespace Puma.MDE.OPUS.Test
 {
     public class FakeHttpMessageHandler : HttpMessageHandler
     {

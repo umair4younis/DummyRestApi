@@ -2,7 +2,7 @@
 using System;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Detailed information for each AssetAtMarketplace entry in a Total Return Swap.

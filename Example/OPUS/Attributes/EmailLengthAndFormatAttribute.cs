@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
 
 
-namespace Example.OPUS.Attributes
+namespace Puma.MDE.OPUS.Attributes
 {
     /// <summary>
     /// Validates that the value is a valid email address and its length is within the specified range.

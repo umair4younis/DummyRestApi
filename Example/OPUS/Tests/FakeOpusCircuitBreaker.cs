@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 
 
-namespace Example.OPUS.Tests
+namespace Puma.MDE.OPUS.Tests
 {
     public class FakeOpusCircuitBreaker : OpusCircuitBreaker
     {

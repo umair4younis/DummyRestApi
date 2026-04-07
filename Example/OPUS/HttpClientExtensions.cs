@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     public static class HttpClientExtensions
     {

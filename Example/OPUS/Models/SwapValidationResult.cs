@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Result of swap validation containing success/failure status, warnings, 

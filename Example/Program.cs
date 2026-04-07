@@ -1,17 +1,221 @@
+using Puma.MDE.OPUS;
+using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS.Utilities;
 using System;
+using System.Collections.Generic;
 
-namespace Example
+
+namespace Puma.MDE
 {
     class Program
     {
         static void Main(string[] args)
         {
-            // The code provided will print ‘Hello World’ to the console.
-            // Press Ctrl+F5 (or go to Debug > Start Without Debugging) to run your app.
-            Console.WriteLine("Hello World!");
-            Console.ReadKey();
+            string ParentAssetId = "52288231";
+            string query = @"
+        {
+          assets(range: {offset: 0, size: 1000} 
+          filter: {
+            and: [
+              { expression: ""id = " + ParentAssetId + @""" }
+            ]
+          }) 
+          {
+            edges {
+              node {
+                id
+                name
+                uuid
+                __typename
+              }
+            }
+          }
+        }";
 
-            // Go to http://aka.ms/dotnet-get-started-console to continue learning how to build a console app! 
+            var filteredPortfolioRows = new List<object[]>
+            {
+                new object[] { "STOXX EUROPE 600 UTILITIES NR", "SX6R Index", 1085.30, "5.03%" },
+                new object[] { "DJ STOXX BANK RETURN", "SX7R Index", 2051.54, "5.87%" },
+                new object[] { "STOXX EUROPE 600 HEALTH CARE NR", "SXDR Index", 1793.15, "10.53%" },
+                new object[] { "DJ STOXX FINANCIAL SERVICES RETURN", "SXFR Index", 784.29, "4.69%" },
+                new object[] { "DJ STOXX INSURANCE RETURN", "SXIR Index", 1357.76, "4.65%" },
+                new object[] { "DJ STOXX CONSTRUCTION & MAT. RETURN", "SXOR Index", 981.10, "4.83%" },
+                new object[] { "STOXX EUROPE 600 PERS. & HOUSEHOLD G.", "SXQR Index", 789.76, "5.01%" },
+                new object[] { "UC US CONSUMER STAPLES NR INDEX", "UCGRUCSN Index", 2113.34, "4.53%" },
+                new object[] { "UC US FINANCIALS NR INDEX", "UCGRUFNN Index", 4116.80, "9.49%" },
+                new object[] { "UC US HEALTH CARE NR INDEX", "UCGRUHCN Index", 4642.18, "10.64%" },
+                new object[] { "UC US INDUSTRIALS NR INDEX", "UCGRUINN Index", 3980.36, "9.70%" },
+                new object[] { "UC US INFORMATION TECH NR INDEX", "UCGRUITN Index", 9451.63, "25.18%" }
+            };
+
+            List<ReportHolding> holdings = new List<ReportHolding>();
+            foreach (var pr in filteredPortfolioRows)
+            {
+                holdings.Add(new ReportHolding
+                {
+                    Name = pr.GetValue(0).ToString(),
+                    BbgTicker = pr.GetValue(1).ToString(),
+                    Nominal = PercentageHelper.ParsePercentage(pr.GetValue(2).ToString()),
+                    MarketWeightPercent = PercentageHelper.ParsePercentage(pr.GetValue(3).ToString()),
+                    Currency = "EUR",
+                    AssetType = "Index"
+                });
+            }
+            OpusWeightUpdateProcessor.ReportHoldings = holdings;
+            OpusWeightUpdateProcessor.Currency = "EUR";
+
+            Dictionary<string, string> swapValues = new Dictionary<string, string>
+            {
+                { "Swap Notional", "36,256,000.0000" },
+                { "MtM", "4,347,097.1411" },
+                { "MTM from Financing", "-0.0029%" },
+                { "Swap Value", "11.9929%" }
+            };
+
+            foreach (var swapValue in swapValues)
+            {
+                // Fetch swap account values to be updated in OPUS API
+                EncapculateSwapAccountValues(swapValue.Key,
+                    PercentageHelper.TryParsePercentage(swapValue.Value, out decimal weight) ? PercentageHelper.ParsePercentage(swapValue.Value).ToString() : swapValue.Value);
+            }
+
+            Console.WriteLine("Ready to call the update OPUS API");
+
+            // OPUS API Integration
+            if (!string.IsNullOrEmpty(ParentAssetId))
+            {
+                OpusApiIntegration(true, ParentAssetId);
+            }
+
+            Console.WriteLine("Process of updating OPUS Asset Compositions is completed.");
+            Console.ReadKey();
+        }
+
+        private static void OpusApiIntegration(bool opusEnabled, string opusAssetCompositionId)
+        {
+            Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps is started...");
+
+            OpusConfiguration opusConfiguration = new OpusConfiguration
+            {
+                TokenUrl = AppSettings.Get("Opus.TokenUrl"),
+                BaseUrl = AppSettings.Get("Opus.BaseUrl"),
+                RestUrl = AppSettings.Get("Opus.RestUrl"),
+                GraphQlUrl = AppSettings.Get("Opus.GraphQLUrl"),
+                ProxyUrl = AppSettings.Get("Opus.ProxyUrl"),
+                ClientId = AppSettings.Get("Opus.ClientId"),
+                ClientSecret = AppSettings.Get("Opus.ClientSecret"),
+                ClientCertPath = AppSettings.Get("Opus.ClientCertPath"),
+                ClientCertPassword = AppSettings.Get("Opus.ClientCertPassword"),
+                GraphQlQuery = AppSettings.Get("Opus.GraphQLQuery")
+            };
+
+            Engine.Instance.Log.Info(opusConfiguration);
+
+            OpusHttpClientHandler opusHttpClientHandler = new OpusHttpClientHandler(opusConfiguration);
+            Engine.Instance.Log.Info(opusHttpClientHandler);
+
+            OpusTokenProvider opusTokenProvider = new OpusTokenProvider(opusConfiguration);
+            Engine.Instance.Log.Info(opusTokenProvider);
+
+            OpusGraphQLClient opusGraphQLClient = new OpusGraphQLClient(opusHttpClientHandler, opusTokenProvider, opusConfiguration);
+            Engine.Instance.Log.Info(opusGraphQLClient);
+            Console.WriteLine("Result of the call to OPUS Graph QL");
+            Console.WriteLine(opusGraphQLClient);
+
+            OpusApiClient opusApiClient = new OpusApiClient(opusHttpClientHandler, opusTokenProvider, opusConfiguration);
+            Engine.Instance.Log.Info(opusApiClient);
+            Console.WriteLine("Result of the call to OPUS API");
+            Console.WriteLine(opusApiClient);
+
+            OpusWeightUpdateProcessor.ParentAssetId = opusAssetCompositionId;
+            Engine.Instance.Log.Info(OpusWeightUpdateProcessor.ParentAssetId);
+
+            var processor = new OpusWeightUpdateProcessor(opusGraphQLClient, opusApiClient);
+            Engine.Instance.Log.Info(processor);
+
+            var swapId = processor.ExecuteAsync().GetAwaiter().GetResult();
+            swapId = "019d2001-e11b-7000-a211-8c654386b53d";
+            // Create MtM quote
+            var quote = new AssetQuote
+            {
+                ClosingQuoteOfDay = false,
+                LastQuoteOfDay = false,
+                Time = DateTime.UtcNow,
+                TimeZone = TimeZoneHelper.GetIanaTimeZone(),
+                Value = new AmountValue { Quantity = OpusWeightUpdateProcessor.Mtm, Unit = $"{OpusWeightUpdateProcessor.Currency}/Pieces", Type = "PRICE_PER_PIECE" }
+            };
+            Engine.Instance.Log.Info(quote);
+
+            var createdQuote = processor.CreateSwapQuoteAsync(swapId, quote).GetAwaiter().GetResult();
+            Engine.Instance.Log.Info(createdQuote);
+
+            // Update notional
+            var swapNominalPatch = new SwapNominalPatch
+            {
+                Nominal = new AmountValue { Quantity = OpusWeightUpdateProcessor.SwapNotional, Unit = $"{OpusWeightUpdateProcessor.Currency}", Type = "MONEY" }
+            };
+            Engine.Instance.Log.Info(swapNominalPatch);
+            processor.UpdateSwapNominalAsync(swapId, swapNominalPatch).GetAwaiter().GetResult();
+
+            Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps are completed in OPUS API.");
+
+
+            // Fetch quotes
+            //var quotes = processor.GetSwapQuotesAsync(swapId).GetAwaiter().GetResult();
+
+            // Update assetAtMarketplaces
+            var patch = new SwapPatch
+            {
+                Nominal = new AmountValue
+                {
+                    Quantity = OpusWeightUpdateProcessor.SwapNotional,
+                    Unit = $"{OpusWeightUpdateProcessor.Currency}",
+                    Type = "MONEY"
+                },
+                AssetAtMarketplaces = new List<AssetAtMarketplaceDetail>
+                {
+                    new AssetAtMarketplaceDetail
+                    {
+                        Home = true,
+                        QuoteFactor = new AmountValue { Quantity = OpusWeightUpdateProcessor.SwapNotional, Type = "SCALAR" },
+                        LotSize = new AmountValue { Quantity = OpusWeightUpdateProcessor.SwapNotional, Unit = "Pieces", Type = "PIECE" },
+                        QuoteSource = "",
+                        QuoteUnit = $"{OpusWeightUpdateProcessor.Currency}/Pieces",
+                        Reference = true
+                        // You can still include uuid, tradable, etc. when needed
+                    }
+                }
+            };
+            //processor.UpdateSwapAssetAtMarketplacesAsync(swapId, patch).GetAwaiter().GetResult();
+        }
+
+        private static void EncapculateSwapAccountValues(string propertyName, string propertyValue)
+        {
+            switch (propertyName)
+            {
+                case "Swap Notional":
+                    {
+                        OpusWeightUpdateProcessor.SwapNotional = decimal.Parse(propertyValue);
+                        break;
+                    }
+                case "MtM":
+                    {
+                        OpusWeightUpdateProcessor.Mtm = decimal.Parse(propertyValue);
+                        break;
+                    }
+                case "MTM from Financing":
+                    {
+                        OpusWeightUpdateProcessor.MtmFromFinancing = decimal.Parse(propertyValue);
+                        break;
+                    }
+                case "Swap Value":
+                    {
+                        OpusWeightUpdateProcessor.SwapValue = decimal.Parse(propertyValue);
+                        break;
+                    }
+                default:
+                    break;
+            }
         }
     }
 }

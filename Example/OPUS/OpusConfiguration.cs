@@ -1,7 +1,7 @@
 ﻿using System;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     /// <summary>
     /// Configuration for OPUS API endpoints.

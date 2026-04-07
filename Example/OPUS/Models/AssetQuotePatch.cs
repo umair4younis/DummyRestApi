@@ -3,7 +3,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// PATCH DTO for updating an existing quote.

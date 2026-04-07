@@ -1,7 +1,7 @@
-﻿using Example.OPUS.Models;
+﻿using Puma.MDE.OPUS.Models;
 
 
-namespace Example.OPUS.Tests
+namespace Puma.MDE.OPUS.Tests
 {
     public class FakeRetryPolicy : RetryPolicy
     {

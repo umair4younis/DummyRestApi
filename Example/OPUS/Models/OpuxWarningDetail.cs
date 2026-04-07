@@ -1,7 +1,7 @@
 ﻿using Newtonsoft.Json;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Warning detail in OPUS API responses.

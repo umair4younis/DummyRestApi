@@ -2,7 +2,7 @@
 using System.Net;
 
 
-namespace Example.OPUS.Exceptions
+namespace Puma.MDE.OPUS.Exceptions
 {
     /// <summary>
     /// Custom exception that includes HTTP status code information.

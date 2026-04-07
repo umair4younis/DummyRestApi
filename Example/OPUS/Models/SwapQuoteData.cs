@@ -1,7 +1,7 @@
 ﻿using System;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     public class SwapQuoteData
     {

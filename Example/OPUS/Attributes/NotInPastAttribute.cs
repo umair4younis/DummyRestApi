@@ -2,7 +2,7 @@
 using System.ComponentModel.DataAnnotations;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Ensures the date is not in the past (useful for quote date/time).

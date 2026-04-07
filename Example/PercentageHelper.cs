@@ -2,7 +2,7 @@
 using System.Globalization;
 
 
-namespace Example
+namespace Puma.MDE
 {
     public static class PercentageHelper
     {

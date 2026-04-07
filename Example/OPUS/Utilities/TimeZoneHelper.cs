@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 
 
-namespace Example.OPUS.Utilities
+namespace Puma.MDE.OPUS.Utilities
 {
     /// <summary>
     /// Static helper class for timezone conversions, especially between Windows and IANA formats.

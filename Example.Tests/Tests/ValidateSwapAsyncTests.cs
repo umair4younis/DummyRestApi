@@ -1,15 +1,15 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Example.OPUS.Models;
+using Puma.MDE.OPUS.Models;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Example.OPUS.Exceptions;
-using Example.OPUS;
-using Example.OPUS.Tests;
+using Puma.MDE.OPUS.Exceptions;
+using Puma.MDE.OPUS;
+using Puma.MDE.OPUS.Tests;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     [TestClass]
     public class ValidateSwapAsyncTests

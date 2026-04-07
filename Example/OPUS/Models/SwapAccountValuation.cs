@@ -2,10 +2,10 @@
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using Newtonsoft.Json;
-using Example.OPUS.Attributes;
+using Puma.MDE.OPUS.Attributes;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Full model for creating or replacing a Total Return Swap (TRS).

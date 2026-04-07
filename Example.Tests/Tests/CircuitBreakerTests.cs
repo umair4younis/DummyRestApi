@@ -1,10 +1,10 @@
-﻿using Example.OPUS;
-using Example.OPUS.Exceptions;
+﻿using Puma.MDE.OPUS;
+using Puma.MDE.OPUS.Exceptions;
 using System;
 using System.Threading.Tasks;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     public class CircuitBreakerTests
     {

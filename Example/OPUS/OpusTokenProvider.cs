@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using Example.OPUS.Models;
+using Puma.MDE.OPUS.Models;
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     public class OpusTokenProvider
     {

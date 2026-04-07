@@ -1,7 +1,7 @@
 ﻿using System;
 
 
-namespace Example.OPUS.Exceptions
+namespace Puma.MDE.OPUS.Exceptions
 {
     public class CircuitBreakerOpenException : Exception
     {

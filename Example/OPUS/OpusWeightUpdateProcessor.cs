@@ -1,6 +1,6 @@
 ﻿using Newtonsoft.Json;
-using Example.OPUS.Exceptions;
-using Example.OPUS.Models;
+using Puma.MDE.OPUS.Exceptions;
+using Puma.MDE.OPUS.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,7 +8,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     /// <summary>
     /// Coordinates the process of validating and updating asset composition weights in OPUS.

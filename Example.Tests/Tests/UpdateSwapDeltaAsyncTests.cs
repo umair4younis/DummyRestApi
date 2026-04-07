@@ -1,9 +1,9 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Newtonsoft.Json;
-using Example.OPUS;
-using Example.OPUS.Exceptions;
-using Example.OPUS.Models;
-using Example.OPUS.Tests;
+using Puma.MDE.OPUS;
+using Puma.MDE.OPUS.Exceptions;
+using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS.Tests;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -11,7 +11,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     [TestClass]
     public class UpdateSwapDeltaAsyncTests

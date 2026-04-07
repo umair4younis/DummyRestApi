@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// PATCH DTO – all fields are optional (nullable by default).

@@ -1,15 +1,15 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Newtonsoft.Json;
-using Example.OPUS;
-using Example.OPUS.Test;
-using Example.OPUS.Tests;
+using Puma.MDE.OPUS;
+using Puma.MDE.OPUS.Test;
+using Puma.MDE.OPUS.Tests;
 using System;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     [TestClass]
     public class OpusGraphQLClientTests

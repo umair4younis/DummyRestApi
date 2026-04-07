@@ -1,13 +1,13 @@
-﻿using Example.OPUS.Models;
+﻿using Puma.MDE.OPUS.Models;
 using System;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using Example.OPUS.Exceptions;
+using Puma.MDE.OPUS.Exceptions;
 
 
-namespace Example.OPUS.Tests
+namespace Puma.MDE.OPUS.Tests
 {
     public class FakeOpusApiClient : OpusApiClient
     {

@@ -1,7 +1,7 @@
 ﻿using System;
 
 
-namespace Example.OPUS.Exceptions
+namespace Puma.MDE.OPUS.Exceptions
 {
     /// <summary>
     /// Thrown when the API response cannot be deserialized or is malformed (invalid JSON, unexpected structure, etc.).

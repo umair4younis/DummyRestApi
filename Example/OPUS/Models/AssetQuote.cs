@@ -1,10 +1,10 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
 using Newtonsoft.Json;
-using Example.OPUS.Utilities;
+using Puma.MDE.OPUS.Utilities;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Represents a quote for an asset in a marketplace (e.g. home marketplace of a swap).

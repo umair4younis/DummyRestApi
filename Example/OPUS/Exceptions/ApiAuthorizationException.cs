@@ -2,7 +2,7 @@
 using System.Net;
 
 
-namespace Example.OPUS.Exceptions
+namespace Puma.MDE.OPUS.Exceptions
 {
     /// <summary>
     /// Thrown when the API returns 403 Forbidden or another authorization-related error.

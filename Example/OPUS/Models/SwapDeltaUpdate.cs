@@ -2,7 +2,7 @@
 using Newtonsoft.Json;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Payload for PUT /unicredit-swap-service/api/swaps/{swapId} – Update Delta

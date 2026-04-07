@@ -2,7 +2,7 @@
 using System.Net;
 
 
-namespace Example.OPUS.Exceptions
+namespace Puma.MDE.OPUS.Exceptions
 {
     /// <summary>
     /// Thrown when the API returns a 5xx server error (500, 502, 503, 504, etc.).

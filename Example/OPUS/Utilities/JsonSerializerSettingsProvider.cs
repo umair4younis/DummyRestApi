@@ -2,7 +2,7 @@
 using Newtonsoft.Json.Serialization;
 
 
-namespace Example.OPUS.Utilities
+namespace Puma.MDE.OPUS.Utilities
 {
     /// <summary>
     /// Centralized JSON serialization settings for the entire application.

@@ -1,10 +1,10 @@
-﻿using Example.OPUS.Exceptions;
+﻿using Puma.MDE.OPUS.Exceptions;
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     public class OpusCircuitBreaker
     {

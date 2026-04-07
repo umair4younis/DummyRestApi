@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     public class PortfolioData
     {

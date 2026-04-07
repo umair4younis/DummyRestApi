@@ -1,19 +1,19 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Example.OPUS.Models;
-using Example.OPUS;
+using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Net.Http;
 using Newtonsoft.Json;
 using System.Net;
-using Example.OPUS.Exceptions;
+using Puma.MDE.OPUS.Exceptions;
 using System.Linq;
-using static Example.OPUS.OpusCircuitBreaker;
-using Example.OPUS.Tests;
+using static Puma.MDE.OPUS.OpusCircuitBreaker;
+using Puma.MDE.OPUS.Tests;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     [TestClass]
     public class OpusWeightUpdateProcessorTests

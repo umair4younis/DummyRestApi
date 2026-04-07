@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Net;
 
 
-namespace Example.OPUS.Attributes
+namespace Puma.MDE.OPUS.Attributes
 {
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = false)]
     public class EmailDomainResolvableAttribute : ValidationAttribute

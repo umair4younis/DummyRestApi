@@ -2,7 +2,7 @@
 using System;
 
 
-namespace Example.OPUS.Utilities
+namespace Puma.MDE.OPUS.Utilities
 {
     /// <summary>
     /// Ensures DateTime is serialized as ISO 8601 with milliseconds and 'Z' (UTC).

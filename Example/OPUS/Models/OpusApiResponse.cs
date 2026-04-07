@@ -2,7 +2,7 @@
 using Newtonsoft.Json;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Generic wrapper for OPUS API responses (used for GET, POST, PATCH).

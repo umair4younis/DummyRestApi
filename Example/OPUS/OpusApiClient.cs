@@ -5,13 +5,13 @@ using Newtonsoft.Json;
 using System.Text;
 using System;
 using System.Net;
-using Example.OPUS.Exceptions;
-using Example.OPUS.Models;
+using Puma.MDE.OPUS.Exceptions;
+using Puma.MDE.OPUS.Models;
 using System.Linq;
-using Example.OPUS.Utilities;
+using Puma.MDE.OPUS.Utilities;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     /// <summary>
     /// HTTP client wrapper for interacting with the OPUS REST API.

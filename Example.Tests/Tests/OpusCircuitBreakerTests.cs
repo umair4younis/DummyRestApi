@@ -1,13 +1,13 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Example.OPUS.Exceptions;
-using Example.OPUS;
+using Puma.MDE.OPUS.Exceptions;
+using Puma.MDE.OPUS;
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
-using static Example.OPUS.OpusCircuitBreaker;
+using static Puma.MDE.OPUS.OpusCircuitBreaker;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     [TestClass]
     internal class OpusCircuitBreakerTests

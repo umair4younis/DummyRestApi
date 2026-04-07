@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 
 
-namespace Example.OPUS
+namespace Puma.MDE.OPUS
 {
     public static class TestDelayService
     {

@@ -1,5 +1,5 @@
 ﻿
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Response wrapper for delta update (assuming API returns resource)

@@ -1,9 +1,9 @@
-﻿using Example.OPUS.Exceptions;
+﻿using Puma.MDE.OPUS.Exceptions;
 using System;
 using System.Threading.Tasks;
 
 
-namespace Example.Tests
+namespace Puma.MDE.Tests
 {
     public class UnreliableService
     {

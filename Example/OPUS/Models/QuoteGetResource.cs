@@ -2,7 +2,7 @@
 using Newtonsoft.Json;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Resource returned in GET quote response.

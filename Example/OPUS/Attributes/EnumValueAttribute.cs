@@ -2,7 +2,7 @@
 using System.ComponentModel.DataAnnotations;
 
 
-namespace Example.OPUS.Attributes
+namespace Puma.MDE.OPUS.Attributes
 {
     [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = false)]
     public class EnumValueAttribute : ValidationAttribute

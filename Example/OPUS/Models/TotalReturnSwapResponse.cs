@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 
 
-namespace Example.OPUS.Models
+namespace Puma.MDE.OPUS.Models
 {
     /// <summary>
     /// Full response model for a Total Return Swap from OPUS API.
