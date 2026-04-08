@@ -17,7 +17,11 @@ namespace Puma.MDE.OPUS
         public string BaseUrl
         {
             get => _baseUrl;
-            set => _baseUrl = value?.TrimEnd('/') ?? string.Empty;
+            set
+            {
+                _baseUrl = value?.TrimEnd('/') ?? string.Empty;
+                Engine.Instance.Log.Info($"[OpusConfiguration] BaseUrl updated to: {_baseUrl}");
+            }
         }
 
         // ──────────────────────────────────────────────────────────────
@@ -32,13 +36,20 @@ namespace Puma.MDE.OPUS
                 if (string.IsNullOrWhiteSpace(value))
                 {
                     _restSuffix = string.Empty;
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] RestUrl cleared");
                     return;
                 }
 
                 if (value.Contains("://"))
-                    _restSuffix = value;                    // full URL override
+                {
+                    _restSuffix = value;  // full URL override
+                    Engine.Instance.Log.Info($"[OpusConfiguration] RestUrl set to full URL override: {value}");
+                }
                 else
+                {
                     _restSuffix = value.TrimStart('/').TrimEnd('/') + "/";
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] RestUrl suffix updated: {_restSuffix}");
+                }
             }
         }
 
@@ -54,13 +65,20 @@ namespace Puma.MDE.OPUS
                 if (string.IsNullOrWhiteSpace(value))
                 {
                     _unicreditSwapServiceSuffix = string.Empty;
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] UnicreditSwapServiceUrl cleared");
                     return;
                 }
 
                 if (value.Contains("://"))
+                {
                     _unicreditSwapServiceSuffix = value;
+                    Engine.Instance.Log.Info($"[OpusConfiguration] UnicreditSwapServiceUrl set to full URL: {value}");
+                }
                 else
+                {
                     _unicreditSwapServiceSuffix = value.TrimStart('/').TrimEnd('/') + "/";
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] UnicreditSwapServiceUrl suffix updated: {_unicreditSwapServiceSuffix}");
+                }
             }
         }
 
@@ -74,6 +92,7 @@ namespace Puma.MDE.OPUS
                 if (string.IsNullOrWhiteSpace(value))
                 {
                     _graphQlSuffix = string.Empty;
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] GraphQlUrl cleared");
                     return;
                 }
 
@@ -81,14 +100,17 @@ namespace Puma.MDE.OPUS
                     value.StartsWith(BaseUrl, StringComparison.OrdinalIgnoreCase))
                 {
                     _graphQlSuffix = value.Substring(BaseUrl.Length).TrimStart('/');
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] GraphQlUrl extracted suffix: {_graphQlSuffix}");
                 }
                 else if (!value.Contains("://"))
                 {
                     _graphQlSuffix = value.TrimStart('/').TrimEnd('/');
+                    Engine.Instance.Log.Debug($"[OpusConfiguration] GraphQlUrl set as relative: {_graphQlSuffix}");
                 }
                 else
                 {
                     _graphQlSuffix = value;
+                    Engine.Instance.Log.Info($"[OpusConfiguration] GraphQlUrl set to full URL: {value}");
                 }
             }
         }

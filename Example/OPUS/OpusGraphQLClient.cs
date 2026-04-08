@@ -34,54 +34,82 @@ namespace Puma.MDE.OPUS
 
         public virtual async Task<T> ExecuteAsync<T>(string query, object variables = null)
         {
-            string token = await _opusTokenProvider.GetAccessTokenAsync();
+            Engine.Instance.Log.Info($"[OpusGraphQLClient] ExecuteAsync started for query type: {typeof(T).Name}");
 
-            var request = new GraphQLRequest
+            try
             {
-                query = query,
-                variables = variables
-            };
+                string token = await _opusTokenProvider.GetAccessTokenAsync();
 
-            string json = JsonConvert.SerializeObject(request);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var request = new GraphQLRequest
+                {
+                    query = query,
+                    variables = variables
+                };
 
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", token);
+                string json = JsonConvert.SerializeObject(request);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // Wrap the HTTP call in circuit breaker
-            T result = await _opusCircuitBreaker.ExecuteAsync(async () =>
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", token);
+
+                Engine.Instance.Log.Debug($"[OpusGraphQLClient] Sending GraphQL request to: {_opusConfiguration.GraphQlUrl}");
+
+                // Wrap the HTTP call in circuit breaker
+                T result = await _opusCircuitBreaker.ExecuteAsync(async () =>
+                {
+                    HttpResponseMessage response = await _httpClient.PostAsync(
+                        _opusConfiguration.GraphQlUrl,
+                        content);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Engine.Instance.Log.Error($"[OpusGraphQLClient] GraphQL request failed with status {response.StatusCode}");
+                        throw new HttpRequestException(
+                            string.Format("GraphQL request failed with status {0}", response.StatusCode));
+                    }
+
+                    string responseJson = await response.Content.ReadAsStringAsync();
+                    Engine.Instance.Log.Debug($"[OpusGraphQLClient] Response received, parsing...");
+
+                    var graphQLResponse = JsonConvert.DeserializeObject<GraphQLResponse<T>>(responseJson);
+
+                    if (graphQLResponse != null &&
+                        graphQLResponse.errors != null &&
+                        graphQLResponse.errors.Length > 0)
+                    {
+                        string errorMsg = graphQLResponse.errors[0].message;
+                        Engine.Instance.Log.Error($"[OpusGraphQLClient] GraphQL error: {errorMsg}");
+                        throw new Exception(errorMsg);
+                    }
+
+                    Engine.Instance.Log.Info($"[OpusGraphQLClient] GraphQL query succeeded for {typeof(T).Name}");
+                    return graphQLResponse.data;
+                });
+
+                return result;
+            }
+            catch (Exception ex)
             {
-                HttpResponseMessage response = await _httpClient.PostAsync(
-                    _opusConfiguration.GraphQlUrl,
-                    content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    throw new HttpRequestException(
-                        string.Format("GraphQL request failed with status {0}", response.StatusCode));
-                }
-
-                string responseJson = await response.Content.ReadAsStringAsync();
-                var graphQLResponse = JsonConvert.DeserializeObject<GraphQLResponse<T>>(responseJson);
-
-                if (graphQLResponse != null &&
-                    graphQLResponse.errors != null &&
-                    graphQLResponse.errors.Length > 0)
-                {
-                    throw new Exception(graphQLResponse.errors[0].message);
-                }
-
-                return graphQLResponse.data;
-            });
-
-            return result;
+                Engine.Instance.Log.Error($"[OpusGraphQLClient] ExecuteAsync failed: {ex.GetType().Name} - {ex.Message}");
+                throw;
+            }
         }
 
         public T Execute<T>(string query, object variables = null)
         {
-            return ExecuteAsync<T>(query, variables)
-                   .GetAwaiter()
-                   .GetResult();
+            // IMPORTANT: Blocking on async methods can cause deadlocks in .NET 4.8
+            // This method is a backward-compatibility bridge only. Callers should use ExecuteAsync instead.
+            try
+            {
+                return ExecuteAsync<T>(query, variables)
+                       .ConfigureAwait(false)
+                       .GetAwaiter()
+                       .GetResult();
+            }
+            catch (AggregateException aex) when (aex.InnerException != null)
+            {
+                throw aex.InnerException;
+            }
         }
     }
 }

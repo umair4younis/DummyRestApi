@@ -35,13 +35,20 @@ namespace Puma.MDE.OPUS
             _opusTokenProvider = opusTokenProvider ?? throw new ArgumentNullException(nameof(opusTokenProvider));
             _opusConfiguration = opusConfiguration ?? throw new ArgumentNullException(nameof(opusConfiguration));
 
-            _httpClient = new HttpClient(opusHttpClientHandler._opusHttpClientHandler)
-                ?? throw new ArgumentNullException(nameof(_httpClient));
+            _httpClient = opusHttpClientHandler != null
+                ? new HttpClient(opusHttpClientHandler._opusHttpClientHandler)
+                : new HttpClient();
+
+            // Critical: Set timeout to prevent indefinite hangs. Default is 100 seconds, but be explicit.
+            // Network timeouts should be shorter than circuit breaker break duration (90s by default).
+            _httpClient.Timeout = TimeSpan.FromSeconds(60);
 
             _opusCircuitBreaker = new OpusCircuitBreaker(
                 failureThreshold: 4,
                 breakSeconds: 90
             );
+
+            Engine.Instance.Log.Info($"[OpusApiClient] Initialized with timeout=60s, circuit breaker(threshold=4, break=90s)");
         }
 
         /// <summary>
@@ -65,26 +72,39 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public virtual async Task<T> GetAsync<T>(string endpoint)
         {
-            await PrepareAuthHeaderAsync();
+            Engine.Instance.Log.Info($"[OpusApiClient] GetAsync<{typeof(T).Name}> started for endpoint: {endpoint}");
 
-            string fullUrl = BuildFullUrl(endpoint);
-
-            T result = await _opusCircuitBreaker.ExecuteAsync(async () =>
+            try
             {
-                HttpResponseMessage response = await _httpClient.GetAsync(fullUrl);
+                await PrepareAuthHeaderAsync();
 
-                if (!response.IsSuccessStatusCode)
+                string fullUrl = BuildFullUrl(endpoint);
+                Engine.Instance.Log.Debug($"[OpusApiClient] GET request to: {fullUrl}");
+
+                T result = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    var message = string.Format("GET {0} failed with status {1}", endpoint, response.StatusCode);
-                    Engine.Instance.Log.Error(message);
-                    throw new HttpRequestException(message);
-                }
+                    HttpResponseMessage response = await _httpClient.GetAsync(fullUrl);
 
-                string json = await response.Content.ReadAsStringAsync();
-                return JsonSerializerSettingsProvider.Deserialize<T>(json);
-            });
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var message = string.Format("GET {0} failed with status {1}", endpoint, response.StatusCode);
+                        Engine.Instance.Log.Error($"[OpusApiClient] {message}");
+                        throw new HttpRequestException(message);
+                    }
 
-            return result;
+                    Engine.Instance.Log.Debug($"[OpusApiClient] GET succeeded, deserializing response type {typeof(T).Name}");
+                    string json = await response.Content.ReadAsStringAsync();
+                    return JsonSerializerSettingsProvider.Deserialize<T>(json);
+                });
+
+                Engine.Instance.Log.Info($"[OpusApiClient] GetAsync<{typeof(T).Name}> completed successfully");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error($"[OpusApiClient] GetAsync<{typeof(T).Name}> failed: {ex.Message}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -120,26 +140,38 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public virtual async Task PostAsync(string endpoint, object data)
         {
-            await PrepareAuthHeaderAsync();
+            Engine.Instance.Log.Info($"[POST] Starting request to endpoint: {endpoint}");
 
-            string jsonBody = JsonSerializerSettingsProvider.Serialize(data);
-            var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-
-            string fullUrl = BuildFullUrl(endpoint);
-
-            await _opusCircuitBreaker.ExecuteAsync(async () =>
+            try
             {
-                HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content);
+                await PrepareAuthHeaderAsync();
 
-                if (!response.IsSuccessStatusCode)
+                string jsonBody = JsonSerializerSettingsProvider.Serialize(data);
+                var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+                string fullUrl = BuildFullUrl(endpoint);
+                Engine.Instance.Log.Debug($"[POST] Full URL: {fullUrl}");
+
+                await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    var message = string.Format("POST {0} failed with status {1}", endpoint, response.StatusCode);
-                    Engine.Instance.Log.Error(message);
-                    throw new HttpRequestException(message);
-                }
+                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content);
 
-                return response;
-            });
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var message = string.Format("POST {0} failed with status {1}", endpoint, response.StatusCode);
+                        Engine.Instance.Log.Error(message);
+                        throw new HttpRequestException(message);
+                    }
+
+                    Engine.Instance.Log.Info($"[POST] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    return response;
+                });
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error($"[POST] Failed for {endpoint}: {ex.Message}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -217,31 +249,45 @@ namespace Puma.MDE.OPUS
         /// <summary>
         /// PATCH request (standard).
         /// </summary>
-        public async Task PatchAsync(string endpoint, object patchPayload, bool encodeUrl = true, int timeoutMs = 0)
+        public virtual async Task PatchAsync(string endpoint, object patchPayload, bool encodeUrl = true, int timeoutMs = 0)
         {
-            await PrepareAuthHeaderAsync();
+            Engine.Instance.Log.Info($"[PATCH] Starting request to endpoint: {endpoint}");
 
-            string fullUrl = BuildFullUrl(endpoint);
-            if (encodeUrl)
+            try
             {
-                fullUrl = Uri.EscapeUriString(fullUrl);
-            }
+                await PrepareAuthHeaderAsync();
 
-            if (timeoutMs > 0)
-                _httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutMs);
-
-            await _opusCircuitBreaker.ExecuteAsync(async () =>
-            {
-                HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload);
-
-                if (!response.IsSuccessStatusCode)
+                string fullUrl = BuildFullUrl(endpoint);
+                if (encodeUrl)
                 {
-                    string errorBody = await response.Content.ReadAsStringAsync();
-                    var message = string.Format($"PATCH {endpoint} failed ({response.StatusCode}): {errorBody}");
-                    Engine.Instance.Log.Error(message);
-                    throw new HttpRequestException(message);
+                    fullUrl = Uri.EscapeUriString(fullUrl);
                 }
-            });
+
+                Engine.Instance.Log.Debug($"[PATCH] Full URL: {fullUrl}, EncodeUrl: {encodeUrl}, TimeoutMs: {timeoutMs}");
+
+                if (timeoutMs > 0)
+                    _httpClient.Timeout = TimeSpan.FromMilliseconds(timeoutMs);
+
+                await _opusCircuitBreaker.ExecuteAsync(async () =>
+                {
+                    HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        string errorBody = await response.Content.ReadAsStringAsync();
+                        var message = string.Format($"PATCH {endpoint} failed ({response.StatusCode}): {errorBody}");
+                        Engine.Instance.Log.Error(message);
+                        throw new HttpRequestException(message);
+                    }
+
+                    Engine.Instance.Log.Info($"[PATCH] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                });
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error($"[PATCH] Failed for {endpoint}: {ex.Message}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -258,15 +304,26 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                response = await _httpClient.PatchAsync(fullUrl, patchPayload);
-
-                if (response.IsSuccessStatusCode)
+                // Wrap in circuit breaker for consistency with other methods
+                await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    Engine.Instance.Log.Info($"PATCH {endpoint} succeeded ({response.StatusCode})");
+                    response = await _httpClient.PatchAsync(fullUrl, patchPayload);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        Engine.Instance.Log.Info($"PATCH {endpoint} succeeded ({response.StatusCode})");
+                        return true;
+                    }
+
+                    responseBody = await response.Content.ReadAsStringAsync();
+                    return false;
+                });
+
+                // If we get here and response succeeded, return early
+                if (response?.IsSuccessStatusCode == true)
+                {
                     return;
                 }
-
-                responseBody = await response.Content.ReadAsStringAsync();
             }
             catch (CircuitBreakerOpenException cbex)
             {
@@ -277,6 +334,10 @@ namespace Puma.MDE.OPUS
             {
                 Engine.Instance.Log.Error($"Unexpected error during PATCH {endpoint}: {ex.Message}");
                 throw new ApiRequestException("PATCH request failed unexpectedly", null, ex.Message);
+            }
+            finally
+            {
+                response?.Dispose();  // Always dispose response to prevent connection exhaustion
             }
 
             // Error handling logic remains the same...
@@ -294,7 +355,7 @@ namespace Puma.MDE.OPUS
                 }
             }
 
-            var statusCode = (int)response.StatusCode;
+            var statusCode = (int)response?.StatusCode;
             string logMessage = $"PATCH {endpoint} failed ({statusCode}): {errorDetail}";
 
             if (statusCode == 400)
@@ -483,7 +544,7 @@ namespace Puma.MDE.OPUS
         /// <summary>
         /// Creates a new quote for a swap in the home marketplace.
         /// </summary>
-        public async Task<OpusApiResponse<AssetQuote>> AddAssetQuoteToHomeMarketplaceAsync(string endpoint, string swapId, AssetQuote quote, string marketplaceId = "home")
+        public virtual async Task<OpusApiResponse<AssetQuote>> AddAssetQuoteToHomeMarketplaceAsync(string endpoint, string swapId, AssetQuote quote, string marketplaceId = "home")
         {
             if (string.IsNullOrWhiteSpace(swapId)) throw new ArgumentException("Swap ID required", nameof(swapId));
             if (quote == null) throw new ArgumentNullException(nameof(quote));
@@ -514,7 +575,7 @@ namespace Puma.MDE.OPUS
         /// <summary>
         /// Fetches all quotes for a swap in a given marketplace.
         /// </summary>
-        public async Task<OpusApiResponse<QuoteGetResource>> GetSwapQuotesAsync(string endpoint, string swapId, string marketplaceId)
+        public virtual async Task<OpusApiResponse<QuoteGetResource>> GetSwapQuotesAsync(string endpoint, string swapId, string marketplaceId)
         {
             if (string.IsNullOrWhiteSpace(swapId)) throw new ArgumentException("Swap ID required", nameof(swapId));
             if (string.IsNullOrWhiteSpace(marketplaceId)) throw new ArgumentException("Marketplace ID required", nameof(marketplaceId));
@@ -542,7 +603,7 @@ namespace Puma.MDE.OPUS
         /// Safest PatchSwapAsync - sends payload and only checks HTTP status.
         /// Does NOT deserialize the response body (most PATCHes return only 200 OK).
         /// </summary>
-        public async Task PatchSwapAsync(string endpoint, string swapId, object patchPayload)
+        public virtual async Task PatchSwapAsync(string endpoint, string swapId, object patchPayload)
         {
             if (string.IsNullOrWhiteSpace(swapId))
                 throw new ArgumentException("Swap ID required", nameof(swapId));

@@ -1,9 +1,9 @@
-using Puma.MDE.OPUS;
+﻿using Puma.MDE.OPUS;
 using Puma.MDE.OPUS.Models;
 using Puma.MDE.OPUS.Utilities;
 using System;
 using System.Collections.Generic;
-
+using System.Threading.Tasks;
 
 namespace Puma.MDE
 {
@@ -11,28 +11,71 @@ namespace Puma.MDE
     {
         static void Main(string[] args)
         {
-            string ParentAssetId = "52288231";
-            string query = @"
-        {
-          assets(range: {offset: 0, size: 1000} 
-          filter: {
-            and: [
-              { expression: ""id = " + ParentAssetId + @""" }
-            ]
-          }) 
-          {
-            edges {
-              node {
-                id
-                name
-                uuid
-                __typename
-              }
+            try
+            {
+                MainAsync(args).GetAwaiter().GetResult();
             }
-          }
-        }";
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Fatal error: {ex.Message}");
+                Console.Error.WriteLine(ex.StackTrace);
+            }
+            finally
+            {
+                Console.ReadKey();
+            }
+        }
 
-            var filteredPortfolioRows = new List<object[]>
+        private static async Task MainAsync(string[] args)
+        {
+            string parentAssetId = "52288231";
+            string query = BuildGraphQlAssetQuery(parentAssetId);
+
+            var filteredPortfolioRows = BuildDefaultFilteredPortfolioRows();
+            List<ReportHolding> holdings = BuildReportHoldings(filteredPortfolioRows, "EUR", "Index");
+            OpusWeightUpdateProcessor.ReportHoldings = holdings;
+            OpusWeightUpdateProcessor.Currency = "EUR";
+
+            Dictionary<string, string> swapValues = BuildDefaultSwapValues();
+            ApplySwapValues(swapValues);
+
+            Console.WriteLine("Ready to call the update OPUS API");
+
+            if (!string.IsNullOrEmpty(parentAssetId))
+            {
+                // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
+                await OpusApiIntegration(true, parentAssetId);
+            }
+
+            Console.WriteLine("Process of updating OPUS Asset Compositions is completed.");
+        }
+
+        internal static string BuildGraphQlAssetQuery(string parentAssetId)
+        {
+            return
+                    "{\n" +
+                    "  assets(range: {offset: 0, size: 1000} \n" +
+                    "  filter: {\n" +
+                    "    and: [\n" +
+                    $"      {{ expression: \"id = {parentAssetId}\" }}\n" +
+                    "    ]\n" +
+                    "  }) \n" +
+                    "  {\n" +
+                    "    edges {\n" +
+                    "      node {\n" +
+                    "        id\n" +
+                    "        name\n" +
+                    "        uuid\n" +
+                    "        __typename\n" +
+                    "      }\n" +
+                    "    }\n" +
+                    "  }\n" +
+                    "}";
+        }
+
+        internal static List<object[]> BuildDefaultFilteredPortfolioRows()
+        {
+            return new List<object[]>
             {
                 new object[] { "STOXX EUROPE 600 UTILITIES NR", "SX6R Index", 1085.30, "5.03%" },
                 new object[] { "DJ STOXX BANK RETURN", "SX7R Index", 2051.54, "5.87%" },
@@ -47,8 +90,11 @@ namespace Puma.MDE
                 new object[] { "UC US INDUSTRIALS NR INDEX", "UCGRUINN Index", 3980.36, "9.70%" },
                 new object[] { "UC US INFORMATION TECH NR INDEX", "UCGRUITN Index", 9451.63, "25.18%" }
             };
+        }
 
-            List<ReportHolding> holdings = new List<ReportHolding>();
+        internal static List<ReportHolding> BuildReportHoldings(IEnumerable<object[]> filteredPortfolioRows, string currency, string assetType)
+        {
+            var holdings = new List<ReportHolding>();
             foreach (var pr in filteredPortfolioRows)
             {
                 holdings.Add(new ReportHolding
@@ -57,41 +103,38 @@ namespace Puma.MDE
                     BbgTicker = pr.GetValue(1).ToString(),
                     Nominal = PercentageHelper.ParsePercentage(pr.GetValue(2).ToString()),
                     MarketWeightPercent = PercentageHelper.ParsePercentage(pr.GetValue(3).ToString()),
-                    Currency = "EUR",
-                    AssetType = "Index"
+                    Currency = currency,
+                    AssetType = assetType
                 });
             }
-            OpusWeightUpdateProcessor.ReportHoldings = holdings;
-            OpusWeightUpdateProcessor.Currency = "EUR";
 
-            Dictionary<string, string> swapValues = new Dictionary<string, string>
+            return holdings;
+        }
+
+        internal static Dictionary<string, string> BuildDefaultSwapValues()
+        {
+            return new Dictionary<string, string>
             {
                 { "Swap Notional", "36,256,000.0000" },
                 { "MtM", "4,347,097.1411" },
                 { "MTM from Financing", "-0.0029%" },
                 { "Swap Value", "11.9929%" }
             };
-
-            foreach (var swapValue in swapValues)
-            {
-                // Fetch swap account values to be updated in OPUS API
-                EncapculateSwapAccountValues(swapValue.Key,
-                    PercentageHelper.TryParsePercentage(swapValue.Value, out decimal weight) ? PercentageHelper.ParsePercentage(swapValue.Value).ToString() : swapValue.Value);
-            }
-
-            Console.WriteLine("Ready to call the update OPUS API");
-
-            // OPUS API Integration
-            if (!string.IsNullOrEmpty(ParentAssetId))
-            {
-                OpusApiIntegration(true, ParentAssetId);
-            }
-
-            Console.WriteLine("Process of updating OPUS Asset Compositions is completed.");
-            Console.ReadKey();
         }
 
-        private static void OpusApiIntegration(bool opusEnabled, string opusAssetCompositionId)
+        internal static void ApplySwapValues(IDictionary<string, string> swapValues)
+        {
+            foreach (var swapValue in swapValues)
+            {
+                string value = PercentageHelper.TryParsePercentage(swapValue.Value, out decimal weight)
+                    ? PercentageHelper.ParsePercentage(swapValue.Value).ToString()
+                    : swapValue.Value;
+
+                TryEncapculateSwapAccountValue(swapValue.Key, value);
+            }
+        }
+
+        private static async Task OpusApiIntegration(bool opusEnabled, string opusAssetCompositionId)
         {
             Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps is started...");
 
@@ -133,9 +176,9 @@ namespace Puma.MDE
             var processor = new OpusWeightUpdateProcessor(opusGraphQLClient, opusApiClient);
             Engine.Instance.Log.Info(processor);
 
-            var swapId = processor.ExecuteAsync().GetAwaiter().GetResult();
+            // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
+            var swapId = await processor.ExecuteAsync();
             swapId = "019d2001-e11b-7000-a211-8c654386b53d";
-            // Create MtM quote
             var quote = new AssetQuote
             {
                 ClosingQuoteOfDay = false,
@@ -146,24 +189,21 @@ namespace Puma.MDE
             };
             Engine.Instance.Log.Info(quote);
 
-            var createdQuote = processor.CreateSwapQuoteAsync(swapId, quote).GetAwaiter().GetResult();
+            // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
+            var createdQuote = await processor.CreateSwapQuoteAsync(swapId, quote);
             Engine.Instance.Log.Info(createdQuote);
 
-            // Update notional
             var swapNominalPatch = new SwapNominalPatch
             {
                 Nominal = new AmountValue { Quantity = OpusWeightUpdateProcessor.SwapNotional, Unit = $"{OpusWeightUpdateProcessor.Currency}", Type = "MONEY" }
             };
             Engine.Instance.Log.Info(swapNominalPatch);
-            processor.UpdateSwapNominalAsync(swapId, swapNominalPatch).GetAwaiter().GetResult();
+
+            // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
+            await processor.UpdateSwapNominalAsync(swapId, swapNominalPatch);
 
             Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps are completed in OPUS API.");
 
-
-            // Fetch quotes
-            //var quotes = processor.GetSwapQuotesAsync(swapId).GetAwaiter().GetResult();
-
-            // Update assetAtMarketplaces
             var patch = new SwapPatch
             {
                 Nominal = new AmountValue
@@ -182,39 +222,29 @@ namespace Puma.MDE
                         QuoteSource = "",
                         QuoteUnit = $"{OpusWeightUpdateProcessor.Currency}/Pieces",
                         Reference = true
-                        // You can still include uuid, tradable, etc. when needed
                     }
                 }
             };
-            //processor.UpdateSwapAssetAtMarketplacesAsync(swapId, patch).GetAwaiter().GetResult();
         }
 
-        private static void EncapculateSwapAccountValues(string propertyName, string propertyValue)
+        internal static bool TryEncapculateSwapAccountValue(string propertyName, string propertyValue)
         {
             switch (propertyName)
             {
                 case "Swap Notional":
-                    {
-                        OpusWeightUpdateProcessor.SwapNotional = decimal.Parse(propertyValue);
-                        break;
-                    }
+                    OpusWeightUpdateProcessor.SwapNotional = decimal.Parse(propertyValue);
+                    return true;
                 case "MtM":
-                    {
-                        OpusWeightUpdateProcessor.Mtm = decimal.Parse(propertyValue);
-                        break;
-                    }
+                    OpusWeightUpdateProcessor.Mtm = decimal.Parse(propertyValue);
+                    return true;
                 case "MTM from Financing":
-                    {
-                        OpusWeightUpdateProcessor.MtmFromFinancing = decimal.Parse(propertyValue);
-                        break;
-                    }
+                    OpusWeightUpdateProcessor.MtmFromFinancing = decimal.Parse(propertyValue);
+                    return true;
                 case "Swap Value":
-                    {
-                        OpusWeightUpdateProcessor.SwapValue = decimal.Parse(propertyValue);
-                        break;
-                    }
+                    OpusWeightUpdateProcessor.SwapValue = decimal.Parse(propertyValue);
+                    return true;
                 default:
-                    break;
+                    return false;
             }
         }
     }

@@ -18,23 +18,29 @@ namespace Puma.MDE.OPUS
             _opusConfiguration = opusConfiguration ?? throw LogAndCreateNullException(
                 nameof(opusConfiguration), "OpusConfiguration is required but was null");
 
+            Engine.Instance.Log.Info("[OpusHttpClientHandler] Initializing HTTP client handler");
+
             try
             {
                 ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+                Engine.Instance.Log.Debug("[OpusHttpClientHandler] TLS 1.2 enabled");
             }
             catch
             {
                 // Fallback for older runtimes that don't know Tls12 enum member
                 ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+                Engine.Instance.Log.Debug("[OpusHttpClientHandler] TLS 1.2 enabled via fallback (3072)");
             }
 
             ServicePointManager.Expect100Continue = false;
             ServicePointManager.DefaultConnectionLimit = 50;
+            Engine.Instance.Log.Debug("[OpusHttpClientHandler] ServicePointManager configured: Expect100Continue=false, MaxConnections=50");
 
             var proxy = new WebProxy(_opusConfiguration.ProxyUrl, BypassOnLocal: true)
             {
                 UseDefaultCredentials = true
             };
+            Engine.Instance.Log.Info($"[OpusHttpClientHandler] Proxy configured: {_opusConfiguration.ProxyUrl}");
 
             // ────────────────────────────────────────────────────────────────
             // NEW: Skip certificate loading for tests
@@ -42,7 +48,7 @@ namespace Puma.MDE.OPUS
             if (_opusConfiguration is FakeOpusConfiguration fakeConfig &&
                 fakeConfig.SkipCertificateLoadingForTests)
             {
-                Engine.Instance.Log.Info("[TEST] Skipping client certificate loading");
+                Engine.Instance.Log.Info("[OpusHttpClientHandler] TEST MODE - Skipping client certificate loading");
                 _opusHttpClientHandler = new HttpClientHandler
                 {
                     UseProxy = true,
@@ -50,6 +56,7 @@ namespace Puma.MDE.OPUS
                     PreAuthenticate = true,
                     ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
                 };
+                Engine.Instance.Log.Info("[OpusHttpClientHandler] TEST MODE - Handler created without client cert");
                 return;   // ← important: skip real cert loading
             }
 
@@ -66,29 +73,38 @@ namespace Puma.MDE.OPUS
                 {
                     string baseDir = AppDomain.CurrentDomain.BaseDirectory;
                     certPath = Path.Combine(baseDir, certPath);
+                    Engine.Instance.Log.Debug($"[OpusHttpClientHandler] Converted relative cert path to absolute: {certPath}");
                 }
 
                 // Normalize (removes .. / \ etc.)
                 certPath = Path.GetFullPath(certPath);
+                Engine.Instance.Log.Debug($"[OpusHttpClientHandler] Normalized certificate path: {certPath}");
             }
             else
             {
                 string exceptionMessage = "Client certificate path is empty or null";
 
-                Engine.Instance.Log.Error(exceptionMessage);
+                Engine.Instance.Log.Error($"[OpusHttpClientHandler] {exceptionMessage}");
                 throw new ArgumentException(exceptionMessage, nameof(_opusConfiguration.ClientCertPath));
             }
 
-            Engine.Instance.Log.Info($"Resolved certificate path: {certPath}");
+            Engine.Instance.Log.Info($"[OpusHttpClientHandler] Loading certificate from: {certPath}");
 
             X509Certificate2 clientCert;
             try
             {
+                if (!File.Exists(certPath))
+                {
+                    Engine.Instance.Log.Error($"[OpusHttpClientHandler] Certificate file does not exist: {certPath}");
+                    throw new FileNotFoundException($"Certificate file not found: {certPath}");
+                }
+
                 clientCert = new X509Certificate2(
                     certPath,
                     _opusConfiguration.ClientCertPassword,
                     X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet
                 );
+                Engine.Instance.Log.Info($"[OpusHttpClientHandler] Client certificate loaded successfully: Subject={clientCert.SubjectName.Name}, Thumbprint={clientCert.Thumbprint}");
             }
             catch (Exception ex)
             {
@@ -97,7 +113,7 @@ namespace Puma.MDE.OPUS
                     $"Check path, file existence, permissions and password. " +
                     $"Inner: {ex.Message}";
 
-                Engine.Instance.Log.Error(exceptionMessage);
+                Engine.Instance.Log.Error($"[OpusHttpClientHandler] {exceptionMessage}");
                 throw new InvalidOperationException(exceptionMessage, ex);
             }
 
@@ -112,6 +128,7 @@ namespace Puma.MDE.OPUS
             };
 
             _opusHttpClientHandler.ClientCertificates.Add(clientCert);
+            Engine.Instance.Log.Info("[OpusHttpClientHandler] HttpClientHandler created with proxy, preauth, and client certificate");
         }
 
         private ArgumentNullException LogAndCreateNullException(string paramName, string message)

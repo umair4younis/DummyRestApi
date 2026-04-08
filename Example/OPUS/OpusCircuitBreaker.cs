@@ -57,6 +57,8 @@ namespace Puma.MDE.OPUS
             lock (_lock)
             {
                 currentState = _state;
+                Engine.Instance.Log.Debug($"[CircuitBreaker] ExecuteAsync starting. CurrentState: {_state}, " +
+                    $"ConsecutiveFailures: {_consecutiveFailures}/{_failureThreshold}");
 
                 // Auto-transition from Open → HalfOpen when time expires
                 if (_state == CircuitState.Open &&
@@ -70,9 +72,12 @@ namespace Puma.MDE.OPUS
                 // Block if still fully open
                 if (_state == CircuitState.Open)
                 {
-                    throw new CircuitBreakerOpenException(
+                    var openException = new CircuitBreakerOpenException(
                         $"Circuit open until {_circuitOpenedAt + _breakDuration:HH:mm:ss}. " +
                         $"Total open events: {_totalCircuitOpenEvents}");
+                    Engine.Instance.Log.Error($"[CircuitBreaker] BLOCKED - Circuit is OPEN. " +
+                        $"Will retry after {_circuitOpenedAt + _breakDuration:HH:mm:ss}");
+                    throw openException;
                 }
             }
 
@@ -82,6 +87,7 @@ namespace Puma.MDE.OPUS
             {
                 try
                 {
+                    Engine.Instance.Log.Debug($"[CircuitBreaker] Attempt {attempt}/{_maxRetries + 1}");
                     T result = await operation().ConfigureAwait(false);
 
                     lock (_lock)
@@ -110,6 +116,7 @@ namespace Puma.MDE.OPUS
 
                     if (!IsTransient(ex))
                     {
+                        Engine.Instance.Log.Error($"[CircuitBreaker] Non-transient error on attempt {attempt}: {ex.GetType().Name} - {ex.Message}");
                         throw;
                     }
 
@@ -118,6 +125,8 @@ namespace Puma.MDE.OPUS
                         _consecutiveFailures++;
                         _totalFailures++;
                         _lastFailureTime = DateTime.UtcNow;
+
+                        Engine.Instance.Log.Warn($"[CircuitBreaker] Transient error on attempt {attempt}: {ex.GetType().Name} - {ex.Message}");
 
                         if (_state == CircuitState.Closed)
                         {
@@ -129,8 +138,12 @@ namespace Puma.MDE.OPUS
                                 _lastCircuitOpenTime = DateTime.UtcNow;
                                 _consecutiveFailures = 0;
 
-                                Engine.Instance.Log.Error($"[CircuitBreaker] OPENED | Failures: {_totalFailures} | " +
+                                Engine.Instance.Log.Error($"[CircuitBreaker] OPENED | Total failures: {_totalFailures} | " +
                                                   $"Open until {_circuitOpenedAt + _breakDuration:HH:mm:ss}");
+                            }
+                            else
+                            {
+                                Engine.Instance.Log.Debug($"[CircuitBreaker] Failures: {_consecutiveFailures}/{_failureThreshold}");
                             }
                         }
                         else if (_state == CircuitState.HalfOpen)
@@ -147,6 +160,7 @@ namespace Puma.MDE.OPUS
 
                     if (attempt > _maxRetries)
                     {
+                        Engine.Instance.Log.Error($"[CircuitBreaker] Max retries ({_maxRetries}) exceeded. Final error: {lastException.Message}");
                         throw lastException;
                     }
 
@@ -154,7 +168,7 @@ namespace Puma.MDE.OPUS
                     double jitter = new Random().NextDouble() * backoff * _jitterMaxFactor;
                     int delayMs = (int)(backoff + jitter);
 
-                    Engine.Instance.Log.Error($"[Retry] Attempt {attempt}/{_maxRetries} failed. Waiting ~{delayMs} ms...");
+                    Engine.Instance.Log.Info($"[CircuitBreaker] Retry attempt {attempt}/{_maxRetries}. Waiting {delayMs}ms before next attempt...");
 
                     await Task.Delay(delayMs).ConfigureAwait(false);
                 }

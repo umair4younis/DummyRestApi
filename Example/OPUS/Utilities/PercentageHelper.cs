@@ -14,7 +14,10 @@ namespace Puma.MDE
             result = 0m;
 
             if (string.IsNullOrWhiteSpace(value))
+            {
+                Engine.Instance.Log.Debug($"[PercentageHelper] TryParsePercentage failed: input is null/empty");
                 return false;
+            }
 
             // Remove % sign and any whitespace
             string cleaned = value.Replace("%", "").Trim();
@@ -23,9 +26,11 @@ namespace Puma.MDE
             if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
             {
                 result = result / 100m;   // Convert from percentage to decimal (4.69% → 0.0469)
+                Engine.Instance.Log.Debug($"[PercentageHelper] Parsed '{value}' to {result:F6} decimal");
                 return true;
             }
 
+            Engine.Instance.Log.Warn($"[PercentageHelper] TryParsePercentage failed to parse '{value}' (cleaned: '{cleaned}')");
             return false;
         }
 
@@ -34,9 +39,14 @@ namespace Puma.MDE
         /// </summary>
         public static decimal ParsePercentage(string value)
         {
+            Engine.Instance.Log.Debug($"[PercentageHelper] ParsePercentage called with value: '{value}'");
             if (TryParsePercentage(value, out decimal result))
+            {
+                Engine.Instance.Log.Debug($"[PercentageHelper] ParsePercentage succeeded: {result:F6}");
                 return result;
+            }
 
+            Engine.Instance.Log.Error($"[PercentageHelper] ParsePercentage failed for '{value}' - invalid format");
             throw new FormatException($"String '{value}' was not recognized as a valid percentage.");
         }
     }

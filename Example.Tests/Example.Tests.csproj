@@ -54,19 +54,30 @@
       <HintPath>..\Example\DLL\NLog.dll</HintPath>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Net.Http" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Tests\AssertCompat.cs" />
     <Compile Include="Tests\CircuitBreakerAdvancedTests.cs" />
     <Compile Include="Tests\CircuitBreakerTests.cs" />
     <Compile Include="Tests\CircuitBreakerTestSuite.cs" />
+    <Compile Include="Tests\CoverageAttributeTests.cs" />
+    <Compile Include="Tests\CoverageConfigEdgeTests.cs" />
+    <Compile Include="Tests\CoverageExceptionTests.cs" />
+    <Compile Include="Tests\CoverageHelpersTests.cs" />
+    <Compile Include="Tests\CoverageModelSmokeTests.cs" />
+    <Compile Include="Tests\CoverageOpusSupportTests.cs" />
+    <Compile Include="Tests\OpusApiClientBranchTests.cs" />
     <Compile Include="Tests\OpusApiClientExceptionTests.cs" />
     <Compile Include="Tests\OpusApiClientTests.cs" />
     <Compile Include="Tests\OpusCircuitBreakerTests.cs" />
     <Compile Include="Tests\OpusGraphQLClientTests.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.cs" />
+    <Compile Include="Tests\ProgramSeamTests.cs" />
     <Compile Include="Tests\TestDelayService.cs" />
     <Compile Include="Tests\UnreliableService.cs" />
     <Compile Include="Tests\UpdateSwapDeltaAsyncTests.cs" />

@@ -152,8 +152,8 @@
     <Compile Include="OPUS\Tests\FakeTokenProvider.cs" />
     <Compile Include="OPUS\Utilities\JsonSerializerSettingsProvider.cs" />
     <Compile Include="OPUS\Utilities\OpisIsoDateTimeConverter.cs" />
+    <Compile Include="OPUS\Utilities\PercentageHelper.cs" />
     <Compile Include="OPUS\Utilities\TimeZoneHelper.cs" />
-    <Compile Include="PercentageHelper.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

@@ -1,5 +1,6 @@
 ﻿using Puma.MDE.OPUS.Models;
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -31,6 +32,21 @@ namespace Puma.MDE.OPUS.Tests
             _circuitBreakerException = ex;
         }
 
+        public void SetPatchSwapToThrow(Exception ex)
+        {
+            _patchSwapThrowException = ex;
+        }
+
+        public void SetGetSwapQuotesResult(OpusApiResponse<QuoteGetResource> result)
+        {
+            _getSwapQuotesResult = result;
+        }
+
+        public void SetGetSwapQuotesToThrow(Exception ex)
+        {
+            _getSwapQuotesThrowException = ex;
+        }
+
         // Fixed results
         private object _getAsyncResult;
         private Tuple<HttpResponseMessage, string> _postWithResponseFixedResult;
@@ -46,6 +62,10 @@ namespace Puma.MDE.OPUS.Tests
         private Func<string, Tuple<HttpResponseMessage, string>> _deleteWithResponseBehavior;
 
         private Exception _patchAsyncThrowException;
+        private Exception _patchSwapThrowException;
+        private Exception _getSwapQuotesThrowException;
+        private OpusApiResponse<QuoteGetResource> _getSwapQuotesResult;
+        private Exception _deleteAsyncThrowException;
 
         public FakeOpusApiClient()
         : base(
@@ -76,9 +96,13 @@ namespace Puma.MDE.OPUS.Tests
             _putWithResponseBehavior = null;
             _deleteWithResponseBehavior = null;
             _patchAsyncThrowException = null;
+            _patchSwapThrowException = null;
+            _getSwapQuotesThrowException = null;
+            _getSwapQuotesResult = null;
+            _deleteAsyncThrowException = null;
         }
 
-        // ── GetAsync ───────────────────────────────────────────────────────────────
+        // -- GetAsync ---------------------------------------------------------------
         public void SetGetAsyncResult<T>(T result)
         {
             _getAsyncResult = result;
@@ -98,7 +122,7 @@ namespace Puma.MDE.OPUS.Tests
             return Task.FromResult(_getAsyncResult is T t ? t : default(T));
         }
 
-        // ── PostAsync ──────────────────────────────────────────────────────────────
+        // -- PostAsync --------------------------------------------------------------
         public void SetPostAsyncResult() { }
 
         public override Task PostAsync(string endpoint, object data)
@@ -108,7 +132,7 @@ namespace Puma.MDE.OPUS.Tests
             return Task.CompletedTask;
         }
 
-        // ── PostWithResponseAsync (non-generic) ────────────────────────────────────
+        // -- PostWithResponseAsync (non-generic) ------------------------------------
         public void SetPostWithResponseResult(HttpResponseMessage response)
         {
             string body = response.Content != null
@@ -141,7 +165,7 @@ namespace Puma.MDE.OPUS.Tests
             return Task.FromResult(new Tuple<HttpResponseMessage, string>(defaultResp, defaultBody));
         }
 
-        // ── Generic PostWithResponseAsync<T> ───────────────────────────────────────
+        // -- Generic PostWithResponseAsync<T> ---------------------------------------
         public override async Task<T> PostWithResponseAsync<T>(string endpoint, object payload)
         {
             PostWithResponseGenericCalled = true;
@@ -172,7 +196,7 @@ namespace Puma.MDE.OPUS.Tests
             return default(T);
         }
 
-        // ── Convenience for strongly-typed Post ────────────────────────────────────
+        // -- Convenience for strongly-typed Post ------------------------------------
         public void SetPostWithResponseResult<T>(T result)
         {
             if (result == null)
@@ -189,7 +213,7 @@ namespace Puma.MDE.OPUS.Tests
             _postWithResponseFixedResult = new Tuple<HttpResponseMessage, string>(response, json);
         }
 
-        // ── PatchAsync ─────────────────────────────────────────────────────────────
+        // -- PatchAsync -------------------------------------------------------------
         public void SetPatchAsyncResult() { }
 
         public void SetPatchAsyncToThrow(Exception ex)
@@ -207,6 +231,15 @@ namespace Puma.MDE.OPUS.Tests
             _patchWithResponseBehavior = behavior;
         }
 
+
+        public override Task PatchAsync(string endpoint, object data, bool encodeUrl = true, int timeoutMs = 0)
+        {
+            PatchAsyncCalled = true;
+            if (_circuitBreakerException != null) throw _circuitBreakerException;
+            if (_patchAsyncThrowException != null) throw _patchAsyncThrowException;
+            if (_patchAsyncBehavior != null) return Task.FromResult(_patchAsyncBehavior(endpoint, data));
+            return Task.CompletedTask;
+        }
         public override Task PatchAsync(string endpoint, object data, string parentAssetId)
         {
             PatchAsyncCalled = true;
@@ -215,7 +248,15 @@ namespace Puma.MDE.OPUS.Tests
             return Task.CompletedTask;
         }
 
-        // ── PatchWithResponseAsync ─────────────────────────────────────────────────
+        public override Task PatchSwapAsync(string endpoint, string swapId, object patchPayload)
+        {
+            PatchAsyncCalled = true;
+            if (_circuitBreakerException != null) throw _circuitBreakerException;
+            if (_patchSwapThrowException != null) throw _patchSwapThrowException;
+            return Task.CompletedTask;
+        }
+
+        // -- PatchWithResponseAsync -------------------------------------------------
         public void SetPatchWithResponseResult(HttpResponseMessage response)
         {
             string body = response.Content != null
@@ -242,7 +283,7 @@ namespace Puma.MDE.OPUS.Tests
             return Task.FromResult(new Tuple<HttpResponseMessage, string>(resp, "{\"updated\":true}"));
         }
 
-        // ── PutAsync & PutWithResponseAsync ────────────────────────────────────────
+        // -- PutAsync & PutWithResponseAsync ----------------------------------------
         public void SetPutAsyncResult() { }
 
         public void SetPutWithResponseResult(HttpResponseMessage response)
@@ -298,18 +339,19 @@ namespace Puma.MDE.OPUS.Tests
             return Task.FromResult(Tuple.Create(defaultResp, "{\"resource\":{\"status\":\"success\"}}"));
         }
 
-        // ── DeleteAsync / DeleteWithResponseAsync ──────────────────────────────────
+        // -- DeleteAsync / DeleteWithResponseAsync ----------------------------------
         public void SetDeleteAsyncResult() { }
 
         public void SetDeleteAsyncToThrow(Exception ex)
         {
-            throw ex;
+            _deleteAsyncThrowException = ex;
         }
 
         public override Task DeleteAsync(string endpoint)
         {
             DeleteAsyncCalled = true;
             if (_circuitBreakerException != null) throw _circuitBreakerException;
+            if (_deleteAsyncThrowException != null) throw _deleteAsyncThrowException;
             return Task.CompletedTask;
         }
 
@@ -333,7 +375,56 @@ namespace Puma.MDE.OPUS.Tests
             return Task.FromResult(new Tuple<HttpResponseMessage, string>(resp, ""));
         }
 
-        // ── Special method: UpdateSwapDeltaAsync (new 3-parameter signature) ───────
+        public override Task<OpusApiResponse<QuoteGetResource>> GetSwapQuotesAsync(string endpoint, string swapId, string marketplaceId)
+        {
+            if (_circuitBreakerException != null) throw _circuitBreakerException;
+            if (_getSwapQuotesThrowException != null) throw _getSwapQuotesThrowException;
+
+            if (_getSwapQuotesResult != null)
+            {
+                return Task.FromResult(_getSwapQuotesResult);
+            }
+
+            return Task.FromResult(new OpusApiResponse<QuoteGetResource>
+            {
+                Resource = new QuoteGetResource
+                {
+                    Quotes = new List<AssetQuote>
+                    {
+                        new AssetQuote
+                        {
+                            Time = DateTime.UtcNow,
+                            Value = new AmountValue { Quantity = 100000m }
+                        }
+                    }
+                }
+            });
+        }
+
+        public override async Task<OpusApiResponse<AssetQuote>> AddAssetQuoteToHomeMarketplaceAsync(string endpoint, string swapId, AssetQuote quote, string marketplaceId = "home")
+        {
+            if (_circuitBreakerException != null) throw _circuitBreakerException;
+
+            var tuple = await PostWithResponseAsync(endpoint, quote);
+            if (!tuple.Item1.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"POST quote failed: {tuple.Item1.StatusCode} - {tuple.Item2}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(tuple.Item2))
+            {
+                try
+                {
+                    var typed = JsonConvert.DeserializeObject<OpusApiResponse<AssetQuote>>(tuple.Item2);
+                    if (typed != null) return typed;
+                }
+                catch { }
+            }
+
+            return new OpusApiResponse<AssetQuote> { Resource = quote };
+        }
+
+        // -- Special method: UpdateSwapDeltaAsync (new 3-parameter signature) -------
         public override async Task<OpusApiResponse<SwapDeltaUpdateResponse>> UpdateSwapDeltaAsync(string endpoint, string swapId, SwapDeltaUpdate deltaUpdate)
         {
             UpdateSwapDeltaAsyncCalled = true;
@@ -376,11 +467,18 @@ namespace Puma.MDE.OPUS.Tests
             }
         }
 
-        // ── Helper for GetWithResponseAsync (if used) ──────────────────────────────
+        // -- Helper for GetWithResponseAsync (if used) ------------------------------
         public void SetGetWithResponseResult(HttpResponseMessage response)
         {
             string body = response.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? "{}";
-            _getAsyncResult = JsonConvert.DeserializeObject(body);
+            try
+            {
+                _getSwapQuotesResult = JsonConvert.DeserializeObject<OpusApiResponse<QuoteGetResource>>(body);
+            }
+            catch
+            {
+                _getSwapQuotesResult = null;
+            }
         }
     }
 }

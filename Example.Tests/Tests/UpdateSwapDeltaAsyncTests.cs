@@ -163,8 +163,7 @@ namespace Puma.MDE.Tests
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
-        public async Task UpdateSwapDeltaAsync_WeightsSumNot100_Throws()
+        public async Task UpdateSwapDeltaAsync_WeightsSumNot100_AllowsUpdateWithWarning()
         {
             var swapId = "sum-wrong-swap";
 
@@ -177,7 +176,6 @@ namespace Puma.MDE.Tests
                 }
             };
 
-            // Mock valid swap for validation
             var mockSwap = new TotalReturnSwapResponse
             {
                 Uuid = swapId,
@@ -186,10 +184,12 @@ namespace Puma.MDE.Tests
             _fakeApi.SetGetAsyncResult(mockSwap);
 
             await _processor.UpdateSwapDeltaAsync(swapId, delta);
+
+            Assert.IsTrue(_fakeApi.UpdateSwapDeltaAsyncCalled, "Delta update should still be sent when weights are not exactly 100.");
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
+        [ExpectedException(typeof(InvalidOperationException))]
         public async Task UpdateSwapDeltaAsync_NegativePieces_ThrowsEarly()
         {
             var swapId = "negative-pieces-swap";
@@ -207,7 +207,7 @@ namespace Puma.MDE.Tests
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
+        [ExpectedException(typeof(InvalidOperationException))]
         public async Task UpdateSwapDeltaAsync_WeightsOutOfRange_ThrowsEarly()
         {
             var swapId = "invalid-weight-swap";
@@ -224,7 +224,7 @@ namespace Puma.MDE.Tests
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
+        [ExpectedException(typeof(InvalidOperationException))]
         public async Task UpdateSwapDeltaAsync_MissingAssetId_ThrowsEarly()
         {
             var swapId = "missing-assetid-swap";

@@ -175,12 +175,16 @@ namespace Puma.MDE.OPUS
             string operationName,
             RetryPolicy policy)
         {
+            Engine.Instance.Log.Info($"[ExecuteWithRetryAsync] Starting '{operationName}' with max {policy.MaxRetries} retries, " +
+                                    $"base delay {policy.BaseDelayMs}ms, backoff factor {policy.BackoffFactor}");
+
             Random random = new Random();
 
             for (int attempt = 1; attempt <= policy.MaxRetries; attempt++)
             {
                 try
                 {
+                    Engine.Instance.Log.Debug($"[ExecuteWithRetryAsync] '{operationName}' - Attempt {attempt}/{policy.MaxRetries}");
                     return await operation();
                 }
                 catch (Exception ex)
@@ -196,23 +200,23 @@ namespace Puma.MDE.OPUS
                         int delayMs = (int)(backoff + jitter);
 
                         Engine.Instance.Log.Info(string.Format(
-                            "[{0}] Attempt {1}/{2} failed: {3}. Retrying in ~{4}ms...",
-                            operationName, attempt, policy.MaxRetries, ex.Message.Trim(), delayMs));
+                            "[ExecuteWithRetryAsync] '{0}' - Attempt {1}/{2} failed ({3}): {4}. Retrying in {5}ms...",
+                            operationName, attempt, policy.MaxRetries, ex.GetType().Name, ex.Message.Trim(), delayMs));
 
                         await TestDelayService.Delay(delayMs);
                         continue;
                     }
 
                     Engine.Instance.Log.Warn(string.Format(
-                        "[{0}] Failed after {1} attempts: {2}",
-                        operationName, policy.MaxRetries, ex.Message));
+                        "[ExecuteWithRetryAsync] '{0}' - Failed after {1} attempts ({2}): {3}",
+                        operationName, policy.MaxRetries, ex.GetType().Name, ex.Message));
 
                     throw;
                 }
             }
 
             throw new InvalidOperationException(
-                string.Format("[{0}] Exhausted all {1} retries.", operationName, policy.MaxRetries));
+                string.Format("[ExecuteWithRetryAsync] '{0}' - Exhausted all {1} retries.", operationName, policy.MaxRetries));
         }
 
         /// <summary>
@@ -220,6 +224,8 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public async Task<ValidationResultOpus> ValidateAssetCompositionIdAsync()
         {
+            Engine.Instance.Log.Info($"[ValidateAssetCompositionIdAsync] Starting parent asset validation for ID: {ParentAssetId}");
+
             string query = $@"
     {{
       assets(range: {{offset: 0, size: 1000}},
@@ -237,33 +243,52 @@ namespace Puma.MDE.OPUS
       }}
     }}";
 
-            // Execute using generic ExecuteAsync<T>
-            var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
-
-            // Access path is now response.assets.edges...
-            var node = response != null &&
-                       response.assets != null &&
-                       response.assets.edges != null &&
-                       response.assets.edges.Length > 0
-                ? response.assets.edges[0].node
-                : null;
-
-            if (node == null)
-                return new ValidationResultOpus { IsValid = false, ErrorMessage = "OPUS asset id is not valid. No asset found." };
-
-            if (string.IsNullOrWhiteSpace(node.uuid))
-                return new ValidationResultOpus { IsValid = false, AssetName = node.name, ErrorMessage = "OPUS asset id is not valid. UUID is missing." };
-
-            if (node.__typename != "ASSETCOMPOSITION")
-                return new ValidationResultOpus { IsValid = false, AssetName = node.name, AssetUuid = node.uuid, ErrorMessage = "OPUS asset id is not valid." };
-
-            return new ValidationResultOpus
+            try
             {
-                IsValid = true,
-                AssetName = node.name,
-                AssetUuid = node.uuid,
-                ErrorMessage = null
-            };
+                // Execute using generic ExecuteAsync<T>
+                Engine.Instance.Log.Debug($"[ValidateAssetCompositionIdAsync] Executing GraphQL query for asset ID: {ParentAssetId}");
+                var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
+
+                // Access path is now response.assets.edges...
+                var node = response != null &&
+                           response.assets != null &&
+                           response.assets.edges != null &&
+                           response.assets.edges.Length > 0
+                    ? response.assets.edges[0].node
+                    : null;
+
+                if (node == null)
+                {
+                    Engine.Instance.Log.Error($"[ValidateAssetCompositionIdAsync] Asset not found for ID: {ParentAssetId}");
+                    return new ValidationResultOpus { IsValid = false, ErrorMessage = "OPUS asset id is not valid. No asset found." };
+                }
+
+                if (string.IsNullOrWhiteSpace(node.uuid))
+                {
+                    Engine.Instance.Log.Error($"[ValidateAssetCompositionIdAsync] UUID is missing for asset: {node.name}");
+                    return new ValidationResultOpus { IsValid = false, AssetName = node.name, ErrorMessage = "OPUS asset id is not valid. UUID is missing." };
+                }
+
+                if (node.__typename != "ASSETCOMPOSITION")
+                {
+                    Engine.Instance.Log.Error($"[ValidateAssetCompositionIdAsync] Asset is not ASSETCOMPOSITION type. Type: {node.__typename}");
+                    return new ValidationResultOpus { IsValid = false, AssetName = node.name, AssetUuid = node.uuid, ErrorMessage = "OPUS asset id is not valid." };
+                }
+
+                Engine.Instance.Log.Info($"[ValidateAssetCompositionIdAsync] Validation successful. Asset: {node.name}, UUID: {node.uuid}");
+                return new ValidationResultOpus
+                {
+                    IsValid = true,
+                    AssetName = node.name,
+                    AssetUuid = node.uuid,
+                    ErrorMessage = null
+                };
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error($"[ValidateAssetCompositionIdAsync] Exception during validation: {ex.GetType().Name} - {ex.Message}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -397,31 +422,52 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public async Task<Dictionary<string, List<AssetNode>>> FetchBbgBatchAsync(List<string> batch)
         {
-            string query = BuildBbgFilterQuery(batch);
-            var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
+            string batchDescription = string.Join(", ", batch);
+            Engine.Instance.Log.Info($"[FetchBbgBatchAsync] Fetching assets for batch: {batchDescription}");
 
-            var resultDict = new Dictionary<string, List<AssetNode>>();
-
-            if (response?.assets?.edges != null)
+            try
             {
-                foreach (var edge in response.assets.edges)
-                {
-                    var node = edge?.node;
-                    if (node != null && node.symbols != null && node.symbols.Length > 0)
-                    {
-                        var identifier = node.symbols[0].identifier;
-                        if (!string.IsNullOrEmpty(identifier))
-                        {
-                            if (!resultDict.ContainsKey(identifier))
-                                resultDict[identifier] = new List<AssetNode>();
+                string query = BuildBbgFilterQuery(batch);
+                Engine.Instance.Log.Debug($"[FetchBbgBatchAsync] Executing GraphQL query for {batch.Count} tickers");
 
-                            resultDict[identifier].Add(node);
+                var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
+
+                var resultDict = new Dictionary<string, List<AssetNode>>();
+
+                if (response?.assets?.edges != null)
+                {
+                    Engine.Instance.Log.Debug($"[FetchBbgBatchAsync] Received {response.assets.edges.Length} edges from GraphQL");
+
+                    foreach (var edge in response.assets.edges)
+                    {
+                        var node = edge?.node;
+                        if (node != null && node.symbols != null && node.symbols.Length > 0)
+                        {
+                            var identifier = node.symbols[0].identifier;
+                            if (!string.IsNullOrEmpty(identifier))
+                            {
+                                if (!resultDict.ContainsKey(identifier))
+                                    resultDict[identifier] = new List<AssetNode>();
+
+                                resultDict[identifier].Add(node);
+                            }
                         }
                     }
-                }
-            }
 
-            return resultDict;
+                    Engine.Instance.Log.Info($"[FetchBbgBatchAsync] Batch complete. Found assets for {resultDict.Count} tickers");
+                }
+                else
+                {
+                    Engine.Instance.Log.Warn($"[FetchBbgBatchAsync] No assets found in response for batch");
+                }
+
+                return resultDict;
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error($"[FetchBbgBatchAsync] Error fetching batch: {ex.GetType().Name} - {ex.Message}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -465,17 +511,21 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public async Task SendWeightUpdatePayloadPatchAsync(string parentUuid, List<ComponentInfo> components)
         {
+            Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Starting PATCH update for parent UUID: {parentUuid}");
+
             if (string.IsNullOrEmpty(parentUuid))
             {
-                Engine.Instance.Log.Warn("Cannot send update - parent UUID is missing");
+                Engine.Instance.Log.Warn("[SendWeightUpdatePayloadPatchAsync] Cannot send update - parent UUID is missing");
                 return;
             }
 
             if (components == null || components.Count == 0)
             {
-                Engine.Instance.Log.Warn("No components to update");
+                Engine.Instance.Log.Warn("[SendWeightUpdatePayloadPatchAsync] No components to update");
                 return;
             }
+
+            Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Preparing PATCH payload for {components.Count} components");
 
             // Build Asset Composition payload
             var compositionPayload = new
@@ -509,33 +559,36 @@ namespace Puma.MDE.OPUS
 
             try
             {
+                Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Sending PATCH to endpoint: {endpoint}");
                 await _opusApiClient.PatchAsync(endpoint, compositionPayload, ParentAssetId);
-                Engine.Instance.Log.Info($"Successfully updated asset composition {ParentAssetId} with {components.Count} members.");
+                Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully patched asset composition {ParentAssetId} with {components.Count} members");
 
-                UpdateSwapDeltaAsync(parentUuid, deltaPayload).GetAwaiter().GetResult();
-                Engine.Instance.Log.Info($"Successfully updated swap in UCS service with swap id: {parentUuid} with delta {components.Count} members.");
+                // FIX: Use await instead of blocking on GetAwaiter().GetResult() to prevent deadlocks
+                Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Updating swap delta for swap ID: {parentUuid}");
+                await UpdateSwapDeltaAsync(parentUuid, deltaPayload);
+                Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully updated swap in UCS service with swap id: {parentUuid} with {components.Count} members");
             }
             catch (ApiValidationException vex)
             {
-                Engine.Instance.Log.Error($"Validation error in PATCH: {vex.Message}");
-                Engine.Instance.Log.Error($"Response body: {vex.ResponseBody}");
+                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Validation error in PATCH: {vex.Message}");
+                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response body: {vex.ResponseBody}");
                 // Optional: notify user or retry with corrected payload
             }
             catch (ApiRateLimitException rlex)
             {
-                Engine.Instance.Log.Warn($"Rate limited - consider delaying next attempt: {rlex.Message}");
+                Engine.Instance.Log.Warn($"[SendWeightUpdatePayloadPatchAsync] Rate limited - consider delaying next attempt: {rlex.Message}");
                 // Optional: implement exponential backoff delay here
             }
             catch (ApiRequestException aex)
             {
-                Engine.Instance.Log.Error($"API request failed ({aex.StatusCode}): {aex.Message}");
+                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] API request failed ({aex.StatusCode}): {aex.Message}");
                 if (!string.IsNullOrEmpty(aex.ResponseBody))
-                    Engine.Instance.Log.Error($"Response details: {aex.ResponseBody}");
+                    Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response details: {aex.ResponseBody}");
             }
             catch (Exception ex)
             {
-                Engine.Instance.Log.Error($"Unexpected PATCH error: {ex.Message}");
-                Engine.Instance.Log.Error(ex.ToString());
+                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Unexpected PATCH error: {ex.Message}");
+                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Exception: {ex.ToString()}");
             }
         }
 
@@ -554,16 +607,18 @@ namespace Puma.MDE.OPUS
             }
 
             string endpoint = $"/swaps/{swapId}";
+            Engine.Instance.Log.Info($"[GetTotalReturnSwapAsync] Fetching swap details for ID: {swapId}");
 
             try
             {
+                Engine.Instance.Log.Debug($"[GetTotalReturnSwapAsync] Endpoint: {endpoint}");
                 var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
                     return await _opusApiClient.GetAsync<TotalReturnSwapResponse>(endpoint);
                 });
 
                 Engine.Instance.Log.Info(string.Format(
-                    "Total Return Swap {0} retrieved successfully. Name: {1}, Nominal: {2}",
+                    "[GetTotalReturnSwapAsync] Swap {0} retrieved successfully. Name: {1}, Nominal: {2}",
                     swapId,
                     response?.Name ?? "N/A",
                     response?.Nominal?.Quantity.ToString("N2") ?? "N/A"));
@@ -572,18 +627,18 @@ namespace Puma.MDE.OPUS
             }
             catch (ApiNotFoundException nfex)
             {
-                Engine.Instance.Log.Error(string.Format("Swap {0} not found: {1}", swapId, nfex.Message));
+                Engine.Instance.Log.Error(string.Format("[GetTotalReturnSwapAsync] Swap {0} not found: {1}", swapId, nfex.Message));
                 throw;
             }
             catch (ApiRequestException arex)
             {
-                Engine.Instance.Log.Error(string.Format("Failed to read TRS {0} ({1}): {2}",
+                Engine.Instance.Log.Error(string.Format("[GetTotalReturnSwapAsync] Failed to read TRS {0} ({1}): {2}",
                     swapId, arex.StatusCode, arex.Message));
                 throw;
             }
             catch (Exception ex)
             {
-                Engine.Instance.Log.Error(string.Format("Unexpected error reading Total Return Swap {0}: {1}",
+                Engine.Instance.Log.Error(string.Format("[GetTotalReturnSwapAsync] Unexpected error reading Total Return Swap {0}: {1}",
                     swapId, ex.Message));
                 throw;
             }
@@ -616,6 +671,26 @@ namespace Puma.MDE.OPUS
 
                     // Parse success response (201 expected)
                     dynamic apiResponse;
+                    // Check HTTP status before parsing
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        int statusCode = (int)response.StatusCode;
+                        dynamic errObj = null;
+                        try { errObj = JsonConvert.DeserializeObject(body); } catch { }
+                        string errMsg = (string)(errObj?.errors?[0]?.message ?? errObj?.error ?? body);
+                        if (statusCode == 400 || statusCode == 422)
+                            throw new ApiValidationException(errMsg ?? "Validation error", body);
+                        if (statusCode == 401 || statusCode == 403)
+                            throw new ApiAuthorizationException(errMsg ?? "Authorization error", body);
+                        if (statusCode == 404)
+                            throw new ApiNotFoundException(errMsg ?? "Not found", "POST /swaps", body);
+                        if (statusCode == 429)
+                            throw new ApiRateLimitException(errMsg ?? "Rate limit exceeded", body);
+                        if (statusCode >= 500)
+                            throw new HttpRequestException($"POST {endpoint} failed with status {statusCode}: {body}");
+                        throw new ApiRequestException(errMsg ?? "API error", response.StatusCode, body);
+                    }
+
                     try
                     {
                         apiResponse = JsonConvert.DeserializeObject(body);
@@ -773,16 +848,18 @@ namespace Puma.MDE.OPUS
             }
 
             string endpoint = $"/swaps/{swapId}";
+            Engine.Instance.Log.Info($"[DeleteTotalReturnSwapAsync] Deleting swap: {swapId}");
 
             try
             {
+                Engine.Instance.Log.Debug($"[DeleteTotalReturnSwapAsync] Endpoint: {endpoint}");
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
                     await _opusApiClient.DeleteAsync(endpoint);
                     return true;
                 });
 
-                Engine.Instance.Log.Info($"Total Return Swap {swapId} deleted successfully.");
+                Engine.Instance.Log.Info($"[DeleteTotalReturnSwapAsync] Total Return Swap {swapId} deleted successfully");
             }
             catch (HttpRequestException hrex)
             {
@@ -791,12 +868,12 @@ namespace Puma.MDE.OPUS
 
                 if (errorDetail.Contains("404"))
                 {
-                    Engine.Instance.Log.Warn($"Swap {swapId} not found for deletion (may already be deleted).");
+                    Engine.Instance.Log.Warn($"[DeleteTotalReturnSwapAsync] Swap {swapId} not found for deletion (may already be deleted)");
                     // You can choose to treat 404 as success or throw ApiNotFoundException
                     return;
                 }
 
-                Engine.Instance.Log.Error($"Failed to delete TRS {swapId}: {errorDetail}");
+                Engine.Instance.Log.Error($"[DeleteTotalReturnSwapAsync] Failed to delete TRS {swapId}: {errorDetail}");
                 throw new ApiRequestException(
                     $"DELETE failed for swap {swapId}",
                     null, // status not easily accessible here — can parse from message if needed
@@ -805,7 +882,7 @@ namespace Puma.MDE.OPUS
             }
             catch (Exception ex)
             {
-                Engine.Instance.Log.Error($"Unexpected error deleting Total Return Swap {swapId}: {ex.Message}");
+                Engine.Instance.Log.Error($"[DeleteTotalReturnSwapAsync] Unexpected error deleting Total Return Swap {swapId}: {ex.Message}");
                 throw;
             }
         }
