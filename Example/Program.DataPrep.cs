@@ -1,12 +1,15 @@
 ﻿using Puma.MDE.OPUS;
 using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS.Utilities;
+using System;
 using System.Collections.Generic;
-
+using System.Threading.Tasks;
 
 namespace Puma.MDE
 {
     partial class Program
     {
+
         internal static string BuildGraphQlAssetQuery(string parentAssetId)
         {
             return
@@ -30,6 +33,7 @@ namespace Puma.MDE
                     "}";
         }
 
+
         internal static List<object[]> BuildDefaultFilteredPortfolioRows()
         {
             return new List<object[]>
@@ -49,6 +53,7 @@ namespace Puma.MDE
                 new object[] { "UC US INFORMATION TECH NR INDEX", "UCGRUITN Index", 9451.63, "25.18%" }
             };
         }
+
 
         internal static List<ReportHolding> BuildReportHoldings(IEnumerable<object[]> filteredPortfolioRows, string currency, string assetType)
         {
@@ -103,11 +108,67 @@ namespace Puma.MDE
                     Nominal = nominal,
                     MarketWeightPercent = marketWeightPercent,
                     Currency = currency,
-                    AssetType = assetType
+                    AssetType = ResolveAssetType(
+                        pr,
+                        pr.GetValue(0)?.ToString(),
+                        bbgTicker,
+                        assetType)
                 });
             }
 
             return holdings;
+        }
+
+
+        private static string ResolveAssetType(object portfolioRow, string name, string bbgTicker, string defaultAssetType)
+        {
+            object instrument = GetPropertyValue(portfolioRow, "Instrument");
+            bool isRealCash = GetPropertyValue<bool>(instrument, "IsRealCash");
+            string instrumentBbg = GetPropertyValue<string>(instrument, "BBG");
+
+            if (isRealCash)
+            {
+                return "Cash";
+            }
+
+            if (!string.IsNullOrWhiteSpace(instrumentBbg) && instrumentBbg.EndsWith(" Index", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Index";
+            }
+
+            // Fallback path for array-based rows used by seam tests.
+            if (!string.IsNullOrWhiteSpace(name) && name.IndexOf("CASH", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Cash";
+            }
+
+            if (!string.IsNullOrWhiteSpace(bbgTicker) && bbgTicker.Trim().EndsWith(" Index", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Index";
+            }
+
+            return string.IsNullOrWhiteSpace(defaultAssetType)
+                ? "Other"
+                : defaultAssetType;
+        }
+
+
+        private static T GetPropertyValue<T>(object target, string propertyName)
+        {
+            object value = GetPropertyValue(target, propertyName);
+            return value is T typed ? typed : default(T);
+        }
+
+
+        private static object GetPropertyValue(object target, string propertyName)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            var property = target.GetType().GetProperty(propertyName);
+            return property?.GetValue(target, null);
         }
 
 
