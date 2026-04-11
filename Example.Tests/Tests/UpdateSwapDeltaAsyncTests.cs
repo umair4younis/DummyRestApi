@@ -1,10 +1,8 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Newtonsoft.Json;
 using Puma.MDE.OPUS;
-using Puma.MDE.OPUS.Exceptions;
 using Puma.MDE.OPUS.Models;
 using Puma.MDE.OPUS.Tests;
-using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -89,16 +87,17 @@ namespace Puma.MDE.Tests
             _fakeApi.SetPutWithResponseResult(mockResponse);
 
             // Act
-            var result = await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
 
             // Assert
             Assert.IsNotNull(result);
-            Assert.AreEqual("updated", result.Resource.Status);
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsNotNull(result.Data);
+            Assert.AreEqual("updated", result.Data.Resource.Status);
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ApiValidationException))]
-        public async Task UpdateSwapDeltaAsync_Api400_ThrowsValidationException()
+        public async Task UpdateSwapDeltaAsync_Api400_ReturnsFailureResult()
         {
             var swapId = "bad-request-swap";
 
@@ -127,12 +126,13 @@ namespace Puma.MDE.Tests
 
             _fakeApi.SetPutWithResponseResult(mockResponse);
 
-            await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
+            Assert.IsFalse(result.IsSuccess);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ApiAuthorizationException))]
-        public async Task UpdateSwapDeltaAsync_Api403_ThrowsAuthException()
+        public async Task UpdateSwapDeltaAsync_Api403_ReturnsFailureResult()
         {
             var swapId = "forbidden-swap";
 
@@ -159,7 +159,9 @@ namespace Puma.MDE.Tests
 
             _fakeApi.SetPutWithResponseResult(mockResponse);
 
-            await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
+            Assert.IsFalse(result.IsSuccess);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
         }
 
         [TestMethod]
@@ -183,14 +185,14 @@ namespace Puma.MDE.Tests
             };
             _fakeApi.SetGetAsyncResult(mockSwap);
 
-            await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
+            Assert.IsTrue(result.IsSuccess);
 
             Assert.IsTrue(_fakeApi.UpdateSwapDeltaAsyncCalled, "Delta update should still be sent when weights are not exactly 100.");
         }
 
         [TestMethod]
-        [ExpectedException(typeof(InvalidOperationException))]
-        public async Task UpdateSwapDeltaAsync_NegativePieces_ThrowsEarly()
+        public async Task UpdateSwapDeltaAsync_NegativePieces_ReturnsFailureResult()
         {
             var swapId = "negative-pieces-swap";
 
@@ -203,12 +205,13 @@ namespace Puma.MDE.Tests
             };
 
             // No need to mock swap - early validation should catch this before ValidateSwapAsync
-            await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
+            Assert.IsFalse(result.IsSuccess);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(InvalidOperationException))]
-        public async Task UpdateSwapDeltaAsync_WeightsOutOfRange_ThrowsEarly()
+        public async Task UpdateSwapDeltaAsync_WeightsOutOfRange_ReturnsFailureResult()
         {
             var swapId = "invalid-weight-swap";
 
@@ -220,12 +223,13 @@ namespace Puma.MDE.Tests
         }
             };
 
-            await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
+            Assert.IsFalse(result.IsSuccess);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
         }
 
         [TestMethod]
-        [ExpectedException(typeof(InvalidOperationException))]
-        public async Task UpdateSwapDeltaAsync_MissingAssetId_ThrowsEarly()
+        public async Task UpdateSwapDeltaAsync_MissingAssetId_ReturnsFailureResult()
         {
             var swapId = "missing-assetid-swap";
 
@@ -237,7 +241,9 @@ namespace Puma.MDE.Tests
                 }
             };
 
-            await _processor.UpdateSwapDeltaAsync(swapId, delta);
+            var result = await _processor.TryUpdateSwapDeltaAsync(swapId, delta);
+            Assert.IsFalse(result.IsSuccess);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
         }
     }
 }

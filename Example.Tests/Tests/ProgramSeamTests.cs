@@ -80,10 +80,11 @@ namespace Puma.MDE.Tests
         }
 
         [TestMethod]
-        [ExpectedException(typeof(FormatException))]
-        public void TryEncapculateSwapAccountValue_InvalidDecimal_Throws()
+        public void TryEncapculateSwapAccountValue_InvalidDecimal_ReturnsFalse()
         {
-            Program.TryEncapculateSwapAccountValue("MtM", "not-a-number");
+            bool result = Program.TryEncapculateSwapAccountValue("MtM", "not-a-number");
+
+            Assert.IsFalse(result);
         }
     }
 }

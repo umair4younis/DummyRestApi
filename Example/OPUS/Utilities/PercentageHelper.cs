@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Globalization;
+using Puma.MDE.OPUS.Models;
 
 
 namespace Puma.MDE
@@ -48,6 +49,19 @@ namespace Puma.MDE
 
             Engine.Instance.Log.Error($"[PercentageHelper] ParsePercentage failed for '{value}' - invalid format");
             throw new FormatException($"String '{value}' was not recognized as a valid percentage.");
+        }
+
+        public static OpusOperationResult<decimal> ParsePercentageSafe(string value)
+        {
+            try
+            {
+                return OpusOperationResult<decimal>.SuccessWithData(ParsePercentage(value));
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error($"[PercentageHelper] ParsePercentageSafe failed: {ex}");
+                return OpusOperationResult<decimal>.FailureWithData("Unable to read percentage value.", ex.Message);
+            }
         }
     }
 }

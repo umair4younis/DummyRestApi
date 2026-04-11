@@ -1,10 +1,8 @@
-﻿using Newtonsoft.Json;
-using Puma.MDE.OPUS.Exceptions;
+﻿using Puma.MDE.OPUS.Exceptions;
 using Puma.MDE.OPUS.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 
 
@@ -15,8 +13,10 @@ namespace Puma.MDE.OPUS
     /// Handles parent asset validation, BBG ticker batch processing, weight aggregation, 
     /// and sending PATCH/POST updates with retry and circuit-breaker resilience.
     /// </summary>
-    public class OpusWeightUpdateProcessor
+    public partial class OpusWeightUpdateProcessor
     {
+        private const string DefaultFriendlyErrorMessage = "Something went wrong while processing OPUS data. Please try again or contact support.";
+
         private readonly decimal _minNotional = 1_000_000m;
         private readonly OpusGraphQLClient _opusGraphQLClient;
         private readonly OpusApiClient _opusApiClient;
@@ -300,11 +300,36 @@ namespace Puma.MDE.OPUS
             List<ComponentInfo> validMappings = new List<ComponentInfo>();
             List<string> errors = new List<string>();
 
+            if (ReportHoldings == null || ReportHoldings.Count == 0)
+            {
+                Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] ReportHoldings is empty. No BBG validation will be executed.");
+                return validMappings;
+            }
+
             // Get all BBG tickers
             List<string> allTickers = new List<string>();
             foreach (ReportHolding holding in ReportHoldings)
             {
-                allTickers.Add(holding.BbgTicker);
+                if (holding == null)
+                {
+                    Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] Encountered null holding entry. Skipping.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(holding.BbgTicker))
+                {
+                    string holdingName = string.IsNullOrWhiteSpace(holding.Name) ? "N/A" : holding.Name;
+                    Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] Holding has empty BBG ticker. Skipping. Holding: " + holdingName);
+                    continue;
+                }
+
+                allTickers.Add(holding.BbgTicker.Trim());
+            }
+
+            if (allTickers.Count == 0)
+            {
+                Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] No valid BBG tickers found after input sanitization.");
+                return validMappings;
             }
 
             // Split into batches
@@ -331,12 +356,27 @@ namespace Puma.MDE.OPUS
                 }
                 catch (Exception ex)
                 {
+                    Engine.Instance.Log.Error("[ValidateAndCollectBbgUuidsAsync] Batch failed permanently. Batch: " + batchDescription + ". Error: " + ex.Message);
                     errors.Add("Batch failed permanently: " + batchDescription + " - " + ex.Message);
+                    continue;
+                }
+
+                if (found == null)
+                {
+                    Engine.Instance.Log.Error("[ValidateAndCollectBbgUuidsAsync] Batch result dictionary is null. Batch: " + batchDescription);
+                    errors.Add("Batch returned null result: " + batchDescription);
                     continue;
                 }
 
                 foreach (string bbg in batch)
                 {
+                    if (string.IsNullOrWhiteSpace(bbg))
+                    {
+                        Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] Encountered null or empty BBG ticker in batch. Batch: " + batchDescription);
+                        errors.Add("Encountered null/empty BBG ticker in batch: " + batchDescription);
+                        continue;
+                    }
+
                     List<AssetNode> nodes = null;
                     if (found.TryGetValue(bbg, out nodes) && nodes != null && nodes.Count > 0)
                     {
@@ -375,7 +415,8 @@ namespace Puma.MDE.OPUS
                         string currency = string.Empty;
                         foreach (ReportHolding h in ReportHoldings)
                         {
-                            if (h.BbgTicker == bbg)
+                            if (h != null && !string.IsNullOrWhiteSpace(h.BbgTicker) &&
+                                string.Equals(h.BbgTicker.Trim(), bbg, StringComparison.OrdinalIgnoreCase))
                             {
                                 weight = h.MarketWeightPercent;
                                 nominal = h.Nominal;
@@ -422,6 +463,30 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public async Task<Dictionary<string, List<AssetNode>>> FetchBbgBatchAsync(List<string> batch)
         {
+            if (batch == null)
+            {
+                Engine.Instance.Log.Warn("[FetchBbgBatchAsync] Batch is null. Returning empty result.");
+                return new Dictionary<string, List<AssetNode>>();
+            }
+
+            List<string> sanitizedBatch = batch
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Select(t => t.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (sanitizedBatch.Count == 0)
+            {
+                Engine.Instance.Log.Warn("[FetchBbgBatchAsync] Batch has no valid BBG tickers after sanitization. Returning empty result.");
+                return new Dictionary<string, List<AssetNode>>();
+            }
+
+            if (sanitizedBatch.Count != batch.Count)
+            {
+                Engine.Instance.Log.Warn("[FetchBbgBatchAsync] Batch contained invalid or duplicate BBG entries. Using sanitized list size: " + sanitizedBatch.Count);
+            }
+
+            batch = sanitizedBatch;
             string batchDescription = string.Join(", ", batch);
             Engine.Instance.Log.Info($"[FetchBbgBatchAsync] Fetching assets for batch: {batchDescription}");
 
@@ -475,8 +540,26 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public string BuildBbgFilterQuery(List<string> bbgTickers)
         {
+            if (bbgTickers == null)
+            {
+                Engine.Instance.Log.Warn("[BuildBbgFilterQuery] BBG ticker list is null. Returning a safe no-result query.");
+                return "{ assets(filter: { and: [ { expression: \"id = -1\" } ] }) { edges { node { id } } } }";
+            }
+
+            List<string> sanitizedTickers = bbgTickers
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Select(t => t.Trim().Replace("'", "\\'"))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (sanitizedTickers.Count == 0)
+            {
+                Engine.Instance.Log.Warn("[BuildBbgFilterQuery] No valid BBG tickers after sanitization. Returning a safe no-result query.");
+                return "{ assets(filter: { and: [ { expression: \"id = -1\" } ] }) { edges { node { id } } } }";
+            }
+
             List<string> orConditions = new List<string>();
-            foreach (string ticker in bbgTickers)
+            foreach (string ticker in sanitizedTickers)
             {
                 orConditions.Add("{ expression: \"symbols.identifier = '" + ticker + "'\" }");
             }
@@ -591,971 +674,7 @@ namespace Puma.MDE.OPUS
             }
         }
 
-        /// <summary>
-        /// Retrieves details of a single Total Return Swap (TRS) by ID, including quotes and full metadata.
-        /// Updated to match the actual OPUS JSON response structure (no longer uses old pagination model).
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <returns>Full TotalReturnSwapResponse with all swap details</returns>
-        public async Task<TotalReturnSwapResponse> GetTotalReturnSwapAsync(string swapId)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            string endpoint = $"/swaps/{swapId}";
-            Engine.Instance.Log.Info($"[GetTotalReturnSwapAsync] Fetching swap details for ID: {swapId}");
-
-            try
-            {
-                Engine.Instance.Log.Debug($"[GetTotalReturnSwapAsync] Endpoint: {endpoint}");
-                var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    return await _opusApiClient.GetAsync<TotalReturnSwapResponse>(endpoint).ConfigureAwait(false);
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info(string.Format(
-                    "[GetTotalReturnSwapAsync] Swap {0} retrieved successfully. Name: {1}, Nominal: {2}",
-                    swapId,
-                    response?.Name ?? "N/A",
-                    response?.Nominal?.Quantity.ToString("N2") ?? "N/A"));
-
-                return response;
-            }
-            catch (ApiNotFoundException nfex)
-            {
-                Engine.Instance.Log.Error(string.Format("[GetTotalReturnSwapAsync] Swap {0} not found: {1}", swapId, nfex.Message));
-                throw;
-            }
-            catch (ApiRequestException arex)
-            {
-                Engine.Instance.Log.Error(string.Format("[GetTotalReturnSwapAsync] Failed to read TRS {0} ({1}): {2}",
-                    swapId, arex.StatusCode, arex.Message));
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error(string.Format("[GetTotalReturnSwapAsync] Unexpected error reading Total Return Swap {0}: {1}",
-                    swapId, ex.Message));
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Creates a new Total Return Swap (TRS) in OPUS.
-        /// Endpoint: /api/v3/masterdata/total-return-swaps (POST)
-        /// Uses the new PostWithResponseAsync to get the created identifier.
-        /// </summary>
-        /// <param name="payload">The full creation payload</param>
-        /// <returns>The identifier (UUID) from resource.identifier</returns>
-        public async Task<string> CreateTotalReturnSwapAsync(object payload)
-        {
-            if (payload == null)
-            {
-                Engine.Instance.Log.Error(payload);
-                throw new ArgumentNullException(nameof(payload));
-            }
-
-            const string endpoint = "/swaps";
-
-            try
-            {
-                string createdId = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    var result = await _opusApiClient.PostWithResponseAsync(endpoint, payload).ConfigureAwait(false);
-                    HttpResponseMessage response = result.Item1;
-                    string body = result.Item2;
-
-                    // Parse success response (201 expected)
-                    dynamic apiResponse;
-                    // Check HTTP status before parsing
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        int statusCode = (int)response.StatusCode;
-                        dynamic errObj = null;
-                        try { errObj = JsonConvert.DeserializeObject(body); } catch { }
-                        string errMsg = (string)(errObj?.errors?[0]?.message ?? errObj?.error ?? body);
-                        if (statusCode == 400 || statusCode == 422)
-                            throw new ApiValidationException(errMsg ?? "Validation error", body);
-                        if (statusCode == 401 || statusCode == 403)
-                            throw new ApiAuthorizationException(errMsg ?? "Authorization error", body);
-                        if (statusCode == 404)
-                            throw new ApiNotFoundException(errMsg ?? "Not found", "POST /swaps", body);
-                        if (statusCode == 429)
-                            throw new ApiRateLimitException(errMsg ?? "Rate limit exceeded", body);
-                        if (statusCode >= 500)
-                            throw new HttpRequestException($"POST {endpoint} failed with status {statusCode}: {body}");
-                        throw new ApiRequestException(errMsg ?? "API error", response.StatusCode, body);
-                    }
-
-                    try
-                    {
-                        apiResponse = JsonConvert.DeserializeObject(body);
-                    }
-                    catch (JsonException jex)
-                    {
-                        Engine.Instance.Log.Error(string.Format("Invalid JSON in TRS creation response: {0}\nRaw: {1}", jex.Message, body));
-                        throw new ApiRequestException("Invalid response format after creation", response.StatusCode, body, jex);
-                    }
-
-                    string identifier = null;
-
-                    if (apiResponse != null && apiResponse.resource != null)
-                    {
-                        identifier = (string)apiResponse.resource.identifier;
-
-                        // Fallback: try to extract from location URL if identifier missing
-                        if (string.IsNullOrEmpty(identifier) && apiResponse.resource.location != null)
-                        {
-                            string loc = (string)apiResponse.resource.location;
-                            string[] segments = loc.Split(new char[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                            if (segments.Length > 0)
-                            {
-                                identifier = segments[segments.Length - 1];
-                            }
-                        }
-                    }
-
-                    if (string.IsNullOrEmpty(identifier))
-                    {
-                        Engine.Instance.Log.Warn(string.Format("TRS created but no identifier extracted from response:\n{0}", body));
-                        identifier = "unknown-created-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-                    }
-
-                    return identifier;
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"Total Return Swap created successfully. Identifier: {createdId}");
-                return createdId;
-            }
-            catch (HttpRequestException hrex) when (hrex.Message.Contains("400"))
-            {
-                // Extract body from inner exception message or re-throw with better info
-                string errorBody = hrex.Message.Contains(":") ? hrex.Message.Split(':')[1].Trim() : null;
-                string errorMsg = "Validation failed during TRS creation";
-
-                if (!string.IsNullOrEmpty(errorBody))
-                {
-                    try
-                    {
-                        dynamic errResp = JsonConvert.DeserializeObject(errorBody);
-                        var errors = errResp?.errors ?? errResp?.resource?.errors;
-                        if (errors != null)
-                        {
-                            errorMsg += ": " + string.Join("; ", ((IEnumerable<dynamic>)errors)
-                                .Select(e => (string)e.localizedMessage ?? (string)e.message));
-                        }
-                    }
-                    catch { }
-                }
-
-                Engine.Instance.Log.Error(errorMsg);
-                Engine.Instance.Log.Error(errorBody ?? hrex.Message);
-                throw new ApiValidationException(errorMsg, errorBody ?? hrex.Message);
-            }
-            catch (HttpRequestException hrex) when (hrex.Message.Contains("404"))
-            {
-                var message = "Resource not found during TRS creation";
-                Engine.Instance.Log.Error(message);
-                throw new ApiNotFoundException(message, "N/A", hrex.Message);
-            }
-            catch (CircuitBreakerOpenException cbex)
-            {
-                Engine.Instance.Log.Error($"Circuit breaker open during TRS creation: {cbex.Message}");
-                throw new ApiRequestException("Service temporarily unavailable (circuit open)", null, null, cbex);
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Unexpected error creating TRS: {ex.Message}");
-                Engine.Instance.Log.Error(ex.ToString());
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Partially updates an existing Swap/TRS (e.g. weights, members, etc.).
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier</param>
-        /// <param name="patchPayload">Partial update data (anonymous object or model)</param>
-        public async Task UpdateTotalReturnSwapAsync(string swapId, object patchPayload)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            if (patchPayload == null)
-            {
-                Engine.Instance.Log.Error(patchPayload);
-                throw new ArgumentNullException(nameof(patchPayload));
-            }
-
-            string endpoint = $"/swaps/{swapId}";
-
-            try
-            {
-                await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    await _opusApiClient.PatchAsync(endpoint, patchPayload, encodeUrl: false).ConfigureAwait(false);
-                    return true;
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"Total Return Swap {swapId} updated successfully (PATCH).");
-            }
-            catch (ApiValidationException vex)
-            {
-                Engine.Instance.Log.Error($"Validation error updating TRS {swapId}: {vex.Message}");
-                if (!string.IsNullOrEmpty(vex.ResponseBody))
-                    Engine.Instance.Log.Error($"Response body: {vex.ResponseBody}");
-                throw;
-            }
-            catch (ApiNotFoundException nfex)
-            {
-                Engine.Instance.Log.Error($"Swap not found: {nfex.Message}");
-                throw;
-            }
-            catch (ApiRateLimitException rlex)
-            {
-                Engine.Instance.Log.Warn($"Rate limit during TRS update {swapId}: {rlex.Message}");
-                throw;
-            }
-            catch (ApiRequestException arex)
-            {
-                Engine.Instance.Log.Error($"API error updating TRS {swapId} ({arex.StatusCode}): {arex.Message}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Unexpected error updating Total Return Swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Deletes an existing Swap/TRS by its ID.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (GUID string)</param>
-        public async Task DeleteTotalReturnSwapAsync(string swapId)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            string endpoint = $"/swaps/{swapId}";
-            Engine.Instance.Log.Info($"[DeleteTotalReturnSwapAsync] Deleting swap: {swapId}");
-
-            try
-            {
-                Engine.Instance.Log.Debug($"[DeleteTotalReturnSwapAsync] Endpoint: {endpoint}");
-                await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    await _opusApiClient.DeleteAsync(endpoint).ConfigureAwait(false);
-                    return true;
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"[DeleteTotalReturnSwapAsync] Total Return Swap {swapId} deleted successfully");
-            }
-            catch (HttpRequestException hrex)
-            {
-                // Extract status and body from message (since DeleteAsync throws HttpRequestException)
-                string errorDetail = hrex.Message;
-
-                if (errorDetail.Contains("404"))
-                {
-                    Engine.Instance.Log.Warn($"[DeleteTotalReturnSwapAsync] Swap {swapId} not found for deletion (may already be deleted)");
-                    // You can choose to treat 404 as success or throw ApiNotFoundException
-                    return;
-                }
-
-                Engine.Instance.Log.Error($"[DeleteTotalReturnSwapAsync] Failed to delete TRS {swapId}: {errorDetail}");
-                throw new ApiRequestException(
-                    $"DELETE failed for swap {swapId}",
-                    null, // status not easily accessible here — can parse from message if needed
-                    errorDetail,
-                    hrex);
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"[DeleteTotalReturnSwapAsync] Unexpected error deleting Total Return Swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Retrieves a specific quote for an asset in a marketplace, wrapped in circuit breaker.
-        /// Endpoint: GET /swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes
-        /// </summary>
-        /// <param name="swapId">The swap identifier (UUID)</param>
-        /// <param name="marketplaceId">The marketplace identifier (UUID)</param>
-        /// <returns>The OpusApiResponse object of type QuoteGetResource or null if not found</returns>
-        public async Task<OpusApiResponse<QuoteGetResource>> GetAssetQuoteAsync(string swapId, string marketplaceId)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-            if (string.IsNullOrWhiteSpace(marketplaceId))
-            {
-                Engine.Instance.Log.Error(string.Format("Marketplace ID is required: {0}", marketplaceId));
-                throw new ArgumentException("Marketplace ID is required", nameof(marketplaceId));
-            }
-
-            string endpoint = $"/swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes";
-
-            try
-            {
-                var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    return await _opusApiClient.GetAsync<OpusApiResponse<QuoteGetResource>>(endpoint).ConfigureAwait(false);
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"Quotes retrieved for swap {swapId}, marketplace {marketplaceId}.");
-                return response;
-            }
-            catch (CircuitBreakerOpenException cbex)
-            {
-                Engine.Instance.Log.Error($"Circuit open - GET quotes aborted: {cbex.Message}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to get quotes for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Adds a new quote to the asset's home marketplace, wrapped in circuit breaker.
-        /// Endpoint: POST /swaps/{swapId}/asset-at-marketplaces/home/quotes
-        /// </summary>
-        /// <param name="swapId">The swap identifier (UUID)</param>
-        /// <param name="quote">The quote to create</param>
-        /// <returns>The OpusApiResponse object of type QuotePostResource or null if not found</returns>
-        public async Task<OpusApiResponse<QuotePostResource>> AddAssetQuoteToHomeMarketplaceAsync(string swapId, AssetQuote quote)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-            if (quote == null)
-            {
-                Engine.Instance.Log.Error(string.Format("Quote is required: {0}", quote));
-                throw new ArgumentNullException(nameof(quote));
-            }
-
-            string endpoint = $"/swaps/{swapId}/asset-at-marketplaces/home/quotes";
-
-            try
-            {
-                var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    var result = await _opusApiClient.PostWithResponseAsync(endpoint, quote).ConfigureAwait(false);
-                    return JsonConvert.DeserializeObject<OpusApiResponse<QuotePostResource>>(result.Item2);
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"Quote added to home marketplace for swap {swapId}.");
-                return response;
-            }
-            catch (CircuitBreakerOpenException cbex)
-            {
-                Engine.Instance.Log.Error($"Circuit open - POST quote aborted: {cbex.Message}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to add quote for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Updates an existing quote for an asset in a marketplace.
-        /// Endpoint: PATCH /swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes/{quoteId}
-        /// </summary>
-        /// <param name="swapId">The swap identifier (UUID)</param>
-        /// <param name="marketplaceId">The marketplace identifier (UUID)</param>
-        /// <param name="quoteId">The quote identifier to update</param>
-        /// <param name="patch">Partial quote update data (only changed fields)</param>
-        /// <returns>The OpusApiResponse object of type QuotePatchResource or null if not found</returns>
-        public async Task<OpusApiResponse<QuotePatchResource>> UpdateAssetQuoteAsync(string swapId, string marketplaceId, string quoteId, AssetQuotePatch patch)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-            if (string.IsNullOrWhiteSpace(marketplaceId))
-            {
-                Engine.Instance.Log.Error(string.Format("Marketplace ID is required: {0}", marketplaceId));
-                throw new ArgumentException("Marketplace ID is required", nameof(marketplaceId));
-            }
-            if (string.IsNullOrWhiteSpace(quoteId))
-            {
-                Engine.Instance.Log.Error(string.Format("Quote ID is required: {0}", quoteId));
-                throw new ArgumentException(nameof(quoteId));
-            }
-            if (patch == null)
-            {
-                Engine.Instance.Log.Error(patch);
-                throw new ArgumentNullException(nameof(patch));
-            }
-
-            string endpoint = $"/swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes/{quoteId}";
-
-            try
-            {
-                var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    var result = await _opusApiClient.PatchWithResponseAsync(endpoint, patch).ConfigureAwait(false); // assuming you add this method
-                    return JsonConvert.DeserializeObject<OpusApiResponse<QuotePatchResource>>(result.Item2);
-                }).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info(
-                    $"Quote {quoteId} updated successfully for swap {swapId} in marketplace {marketplaceId}.");
-                return response;
-            }
-            catch (CircuitBreakerOpenException cbex)
-            {
-                Engine.Instance.Log.Error($"Circuit open - PATCH quote aborted: {cbex.Message}");
-                throw;
-            }
-            catch (ApiValidationException vex)
-            {
-                Engine.Instance.Log.Error($"Validation error updating quote {quoteId}: {vex.Message}");
-                if (!string.IsNullOrEmpty(vex.ResponseBody))
-                    Engine.Instance.Log.Error($"Response body: {vex.ResponseBody}");
-                throw;
-            }
-            catch (ApiNotFoundException nfex)
-            {
-                Engine.Instance.Log.Error($"Quote or resource not found: {nfex.Message}");
-                throw;
-            }
-            catch (ApiRateLimitException rlex)
-            {
-                Engine.Instance.Log.Warn($"Rate limit hit while updating quote {quoteId}: {rlex.Message}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to update quote {quoteId} for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Deletes an existing quote and returns response details.
-        /// Endpoint: DELETE /swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes/{quoteId}
-        /// </summary>
-        public async Task DeleteAssetQuoteWithResponseAsync(string swapId, string marketplaceId, string quoteId)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-            if (string.IsNullOrWhiteSpace(marketplaceId))
-            {
-                Engine.Instance.Log.Error(string.Format("Marketplace ID is required: {0}", marketplaceId));
-                throw new ArgumentException("Marketplace ID is required", nameof(marketplaceId));
-            }
-            if (string.IsNullOrWhiteSpace(quoteId))
-            {
-                Engine.Instance.Log.Error(string.Format("Quote ID is required: {0}", quoteId));
-                throw new ArgumentException(nameof(quoteId));
-            }
-
-            string endpoint = $"/swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes/{quoteId}";
-
-            try
-            {
-                var result = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    return await _opusApiClient.DeleteWithResponseAsync(endpoint).ConfigureAwait(false);
-                }).ConfigureAwait(false);
-
-                HttpResponseMessage response = result.Item1;
-                string body = result.Item2;
-
-                Engine.Instance.Log.Info($"Quote {quoteId} deleted. Status: {response.StatusCode}");
-
-                if (!string.IsNullOrWhiteSpace(body))
-                {
-                    Engine.Instance.Log.Info($"DELETE response body: {body}");
-                }
-            }
-            catch (CircuitBreakerOpenException cbex)
-            {
-                Engine.Instance.Log.Error($"Circuit open - DELETE quote aborted: {cbex.Message}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to delete quote {quoteId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Sends POST request to update asset composition weights (alternative flow).
-        /// </summary>
-        public async Task SendWeightUpdatePayloadPostAsync(string parentUuid, List<ComponentInfo> components)
-        {
-            if (string.IsNullOrEmpty(parentUuid))
-            {
-                Engine.Instance.Log.Warn("Cannot send update - parent UUID is missing");
-                return;
-            }
-
-            if (components == null || components.Count == 0)
-            {
-                Engine.Instance.Log.Warn("No components to update");
-                return;
-            }
-
-            // Build payload as anonymous object (Newtonsoft.Json handles it well)
-            object payload = new
-            {
-                assetCompositionId = ParentAssetId,
-                parentUuid = parentUuid,
-                components = components.ConvertAll(c => new
-                {
-                    childUuid = c.Uuid,
-                    weight = new { value = c.WeightPercent, unit = "%" },
-                    quantity = c.WeightPercent,
-                    reference = c.BbgTicker
-                }).ToArray()
-            };
-
-            string endpoint = $"/asset-compositions/{ParentAssetId}";
-
-            try
-            {
-                await _opusApiClient.PostAsync(endpoint, payload).ConfigureAwait(false);
-                Engine.Instance.Log.Info("Weight update successfully sent to OPUS API.");
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error("Failed to send weight update: " + ex.Message);
-            }
-        }
-
         #region Swap Quote & Update Operations
-
-        /// <summary>
-        /// Creates a new Mark-to-Market (MtM) quote for the swap in its home marketplace.
-        /// 
-        /// This method first performs validation using ValidateSwapAsync (existence, status, optional quote freshness),
-        /// logs a detailed validation summary, logs any warnings, then calls the underlying API.
-        /// 
-        /// Throws InvalidOperationException if validation fails.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <param name="quote">The quote data to create (time, value, etc.)</param>
-        /// <param name="marketplaceId">Marketplace identifier (defaults to "home")</param>
-        /// <returns>The created quote wrapped in OpusApiResponse&lt;AssetQuote&gt;</returns>
-        /// <exception cref="ArgumentException">Thrown if swapId is null or empty</exception>
-        /// <exception cref="ArgumentNullException">Thrown if quote is null</exception>
-        /// <exception cref="InvalidOperationException">Thrown if swap validation fails</exception>
-        public async Task<OpusApiResponse<AssetQuote>> CreateSwapQuoteAsync(string swapId, AssetQuote quote, string marketplaceId = "home")
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error(string.Format("Swap ID is required: {0}", swapId));
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-            if (quote == null)
-            {
-                Engine.Instance.Log.Error(string.Format("Quote is required: {0}", quote));
-                throw new ArgumentNullException(nameof(quote));
-            }
-
-            Engine.Instance.Log.Info($"CreateSwapQuoteAsync started for swap {swapId}");
-
-            var validation = await ValidateSwapAsync(swapId, requireRecentQuote: false, minNotional: _minNotional).ConfigureAwait(false);
-
-            if (!validation.IsValid)
-            {
-                Engine.Instance.Log.Error($"CreateSwapQuoteAsync failed validation: {validation.GetSummary()}");
-                throw new InvalidOperationException($"Cannot create quote for swap {swapId}: {validation.ErrorMessage}");
-            }
-
-            foreach (var warning in validation.Warnings)
-            {
-                Engine.Instance.Log.Warn($"Swap {swapId} quote creation warning: {warning}");
-            }
-
-            string endpoint = $"/swaps/{swapId}/asset-at-marketplaces/home/quotes";
-
-            try
-            {
-                var result = await _opusApiClient.AddAssetQuoteToHomeMarketplaceAsync(endpoint, swapId, quote, marketplaceId).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"Quote successfully created for swap {swapId}. New quote time: {quote.Time:yyyy-MM-dd HH:mm}");
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to create quote for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Retrieves all quotes for a swap in the specified marketplace.
-        /// 
-        /// Performs validation first, logs detailed validation summary and any warnings,
-        /// then fetches quotes via the API.
-        /// 
-        /// Throws InvalidOperationException if validation fails.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <param name="marketplaceId">Marketplace identifier (defaults to "home")</param>
-        /// <returns>Quotes wrapped in OpusApiResponse&lt;QuoteGetResource&gt;</returns>
-        /// <exception cref="ArgumentException">Thrown if swapId is null or empty</exception>
-        /// <exception cref="InvalidOperationException">Thrown if swap validation fails</exception>
-        public async Task<OpusApiResponse<QuoteGetResource>> GetSwapQuotesAsync(string swapId, string marketplaceId = "home")
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error("GetSwapQuotesAsync called with empty swapId");
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            Engine.Instance.Log.Info($"GetSwapQuotesAsync started for swap {swapId}, marketplace: {marketplaceId}");
-
-            var validation = await ValidateSwapAsync(swapId, requireRecentQuote: false, minNotional: _minNotional).ConfigureAwait(false);
-
-            if (!validation.IsValid)
-            {
-                Engine.Instance.Log.Error($"GetSwapQuotesAsync failed validation: {validation.GetSummary()}");
-                throw new InvalidOperationException($"Cannot retrieve quotes for swap {swapId}: {validation.ErrorMessage}");
-            }
-
-            string endpoint = $"/swaps/{swapId}/asset-at-marketplaces/{marketplaceId}/quotes";
-
-            try
-            {
-                var result = await _opusApiClient.GetSwapQuotesAsync(endpoint, swapId, marketplaceId).ConfigureAwait(false);
-                Engine.Instance.Log.Info($"Successfully retrieved {result?.Resource?.Quotes?.Count ?? 0} quotes for swap {swapId}");
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to get quotes for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Updates asset-at-marketplaces configuration for a swap (including nominal).
-        /// The payload now supports both "nominal" and "assetAtMarketplaces" at the root level,
-        /// matching the current OPUS API contract.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <param name="patch">Patch payload containing nominal and/or assetAtMarketplaces</param>
-        /// <exception cref="ArgumentException">Thrown if swapId is empty or patch is invalid</exception>
-        /// <exception cref="InvalidOperationException">Thrown if validation fails</exception>
-        public async Task UpdateSwapAssetAtMarketplacesAsync(string swapId, SwapPatch patch)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error("UpdateSwapAssetAtMarketplacesAsync called with empty swapId");
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            if (patch == null)
-            {
-                Engine.Instance.Log.Error("UpdateSwapAssetAtMarketplacesAsync called with null patch");
-                throw new ArgumentException("Valid SwapPatch is required");
-            }
-
-            // At least one of nominal or assetAtMarketplaces should be provided
-            bool hasNominal = patch.Nominal != null;
-            bool hasAssetUpdates = patch.AssetAtMarketplaces != null && patch.AssetAtMarketplaces.Any();
-
-            if (!hasNominal && !hasAssetUpdates)
-            {
-                Engine.Instance.Log.Error("UpdateSwapAssetAtMarketplacesAsync called with empty nominal and assetAtMarketplaces");
-                throw new ArgumentException("At least nominal or assetAtMarketplaces must be provided");
-            }
-
-            Engine.Instance.Log.Info($"UpdateSwapAssetAtMarketplacesAsync started for swap {swapId} " +
-                                    $"(nominal update: {hasNominal}, marketplaces: {patch.AssetAtMarketplaces?.Count ?? 0})");
-
-            // Perform validation before update
-            var validation = await ValidateSwapAsync(
-                swapId,
-                requireRecentQuote: true,
-                minNotional: _minNotional
-            ).ConfigureAwait(false);
-
-            if (!validation.IsValid)
-            {
-                Engine.Instance.Log.Error($"UpdateSwapAssetAtMarketplacesAsync failed validation: {validation.GetSummary()}");
-                throw new InvalidOperationException(
-                    $"Cannot update asset-at-marketplaces for swap {swapId}: {validation.ErrorMessage}");
-            }
-
-            foreach (var warning in validation.Warnings)
-            {
-                Engine.Instance.Log.Warn($"Swap {swapId} asset update warning: {warning}");
-            }
-
-            Engine.Instance.Log.Info($"UpdateSwapAssetAtMarketplacesAsync validation passed: {validation.GetSummary()}");
-
-            string endpoint = $"/swaps/{swapId}";
-
-            try
-            {
-                await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch).ConfigureAwait(false);
-
-                Engine.Instance.Log.Info($"Successfully updated asset-at-marketplaces" +
-                                        (hasNominal ? " and nominal" : "") +
-                                        $" for swap {swapId}");
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to update asset-at-marketplaces for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Updates the nominal (notional) value of the swap.
-        /// 
-        /// Performs validation, checks for significant notional change (logs warning if >50%),
-        /// logs detailed validation summary, then sends the PATCH request.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <param name="patch">Patch payload containing the new nominal value</param>
-        /// <exception cref="ArgumentException">Thrown if swapId is empty or patch is invalid</exception>
-        /// <exception cref="InvalidOperationException">Thrown if validation fails</exception>
-        public async Task UpdateSwapNominalAsync(string swapId, SwapNominalPatch patch)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error("UpdateSwapNominalAsync called with empty swapId");
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            if (patch?.Nominal == null)
-            {
-                Engine.Instance.Log.Error("UpdateSwapNominalAsync called with null nominal patch");
-                throw new ArgumentException("Valid nominal patch required");
-            }
-
-            Engine.Instance.Log.Info($"UpdateSwapNominalAsync started for swap {swapId}. " +
-                                    $"New nominal: {patch.Nominal.Quantity:N2} {patch.Nominal.Unit}");
-
-            var validation = await ValidateSwapAsync(
-                swapId,
-                requireRecentQuote: false,
-                minNotional: _minNotional
-            ).ConfigureAwait(false);
-
-            if (!validation.IsValid)
-            {
-                Engine.Instance.Log.Error($"UpdateSwapNominalAsync failed validation: {validation.GetSummary()}");
-                throw new InvalidOperationException(
-                    $"Cannot update nominal for swap {swapId}: {validation.ErrorMessage}");
-            }
-
-            foreach (var warning in validation.Warnings)
-            {
-                Engine.Instance.Log.Warn($"Swap {swapId} nominal update warning: {warning}");
-            }
-
-            // Warn on significant notional change
-            if (validation.CurrentNotional.HasValue && patch.Nominal.Quantity > 0)
-            {
-                decimal changePercent = Math.Abs(patch.Nominal.Quantity - validation.CurrentNotional.Value)
-                                      / validation.CurrentNotional.Value * 100m;
-
-                if (changePercent > 50m)
-                {
-                    Engine.Instance.Log.Warn(
-                        $"Significant notional change detected for swap {swapId}: " +
-                        $"{validation.CurrentNotional:N2} → {patch.Nominal.Quantity:N2} ({changePercent:F1}%)");
-                }
-            }
-
-            Engine.Instance.Log.Info($"UpdateSwapNominalAsync validation passed: {validation.GetSummary()}");
-
-            string endpoint = $"/swaps/{swapId}";
-
-            try
-            {
-                await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch).ConfigureAwait(false);
-                Engine.Instance.Log.Info($"Successfully updated nominal for swap {swapId} to {patch.Nominal.Quantity:N2}");
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to update nominal for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Fetches delta (target vs current positions and weights) for swaps based on account segments.
-        /// 
-        /// Performs a POST request to /unicredit-swap-service/api/swaps/deltas
-        /// using the correct base URL via GetBaseUrlForEndpoint.
-        /// Logs the operation start and result summary (consistent with UpdateSwapDeltaAsync).
-        /// </summary>
-        /// <param name="request">Request containing list of account segment UUIDs</param>
-        /// <returns>Swap delta fetch response with account segments, swaps and member deltas</returns>
-        /// <exception cref="ArgumentException">Thrown if request is null or has no account segments</exception>
-        public async Task<SwapDeltaFetchResponse> FetchSwapDeltaAsync(SwapDeltaFetchRequest request)
-        {
-            if (request == null || request.AccountSegments == null || request.AccountSegments.Count == 0)
-            {
-                Engine.Instance.Log.Error("FetchSwapDeltaAsync called with invalid or empty request - accountSegments required");
-                throw new ArgumentException("At least one account segment UUID is required", nameof(request));
-            }
-
-            Engine.Instance.Log.Info(string.Format(
-                "FetchSwapDeltaAsync started for {0} account segment(s): {1}",
-                request.AccountSegments.Count,
-                string.Join(", ", request.AccountSegments)));
-
-            const string endpoint = "/unicredit-swap-service/api/swaps/deltas";
-
-            try
-            {
-                var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
-                {
-                    // Use the generic PostWithResponseAsync<T> with correct base URL
-                    return await _opusApiClient.PostWithResponseAsync<SwapDeltaFetchResponse>(endpoint, request).ConfigureAwait(false);
-                }).ConfigureAwait(false);
-
-                // Calculate summary counts safely for .NET 4.8
-                int totalSwaps = 0;
-                int totalMembers = 0;
-
-                if (response != null && response.AccountSegments != null)
-                {
-                    foreach (var segment in response.AccountSegments)
-                    {
-                        if (segment.Swaps != null)
-                        {
-                            totalSwaps += segment.Swaps.Count;
-                            foreach (var swap in segment.Swaps)
-                            {
-                                if (swap.Members != null)
-                                {
-                                    totalMembers += swap.Members.Count;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Engine.Instance.Log.Info(string.Format(
-                    "FetchSwapDeltaAsync completed successfully. Retrieved data for {0} swap(s) with {1} member delta(s).",
-                    totalSwaps, totalMembers));
-
-                return response;
-            }
-            catch (CircuitBreakerOpenException cbex)
-            {
-                Engine.Instance.Log.Error(string.Format("Circuit breaker open during FetchSwapDeltaAsync: {0}", cbex.Message));
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error(string.Format("Failed to fetch swap delta: {0}", ex.Message));
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Updates delta (current pieces and weights) for members of a swap using PUT.
-        /// 
-        /// Uses the unicredit-swap-service endpoint via GetBaseUrlForEndpoint.
-        /// Performs validation, validates that sum of weights is approximately 100%,
-        /// logs enriched information (member count and asset IDs), then calls the API.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <param name="deltaUpdate">Delta payload containing members with assetId, currentPieces and currentWeight</param>
-        /// <returns>Response from the delta update API</returns>
-        /// <exception cref="ArgumentException">Thrown if swapId is empty or deltaUpdate is invalid</exception>
-        /// <exception cref="InvalidOperationException">Thrown if validation fails or weights sum is invalid</exception>
-        public async Task<OpusApiResponse<SwapDeltaUpdateResponse>> UpdateSwapDeltaAsync(string swapId, SwapDeltaUpdate deltaUpdate)
-        {
-            if (string.IsNullOrWhiteSpace(swapId))
-            {
-                Engine.Instance.Log.Error("UpdateSwapDeltaAsync called with empty swapId");
-                throw new ArgumentException("Swap ID is required", nameof(swapId));
-            }
-
-            if (deltaUpdate == null || deltaUpdate.Members == null || !deltaUpdate.Members.Any())
-            {
-                Engine.Instance.Log.Error("UpdateSwapDeltaAsync called with empty or null members");
-                throw new ArgumentException("At least one member delta is required");
-            }
-
-            // Enriched logging with member count and asset IDs
-            var assetIds = string.Join(", ", deltaUpdate.Members.Select(m => m.AssetId ?? "missing"));
-            Engine.Instance.Log.Info($"UpdateSwapDeltaAsync started for swap {swapId} | " +
-                                    $"Members: {deltaUpdate.Members.Count} | Assets: {assetIds}");
-
-            var validation = await ValidateSwapAsync(
-                swapId,
-                requireRecentQuote: true,
-                minNotional: _minNotional
-            ).ConfigureAwait(false);
-
-            if (!validation.IsValid)
-            {
-                Engine.Instance.Log.Error($"UpdateSwapDeltaAsync failed validation: {validation.GetSummary()}");
-                throw new InvalidOperationException(
-                    $"Cannot update delta for swap {swapId}: {validation.ErrorMessage}");
-            }
-
-            foreach (var warning in validation.Warnings)
-            {
-                Engine.Instance.Log.Warn($"Swap {swapId} delta update warning: {warning}");
-            }
-
-            // Sum-of-weights validation (~100%)
-            decimal totalWeight = deltaUpdate.Members.Sum(m => m.CurrentWeight);
-            if (Math.Abs(totalWeight - 100m) > 0.5m)
-            {
-                string message = $"Sum of weights must be approximately 100%. Actual sum: {totalWeight:F2}%";
-                Engine.Instance.Log.Info(message);
-                // TODO: to throw if needs to restrict this condition
-                //throw new ArgumentException(message);
-            }
-
-            if (Math.Abs(totalWeight - 100m) > 0.01m)
-            {
-                Engine.Instance.Log.Warn($"Weights sum is {totalWeight:F2}% – slight deviation from 100% for swap {swapId}");
-            }
-
-            Engine.Instance.Log.Info($"UpdateSwapDeltaAsync validation passed: {validation.GetSummary()}");
-
-            string endpoint = $"/unicredit-swap-service/api/swaps/{swapId}";
-
-            try
-            {
-                var result = await _opusApiClient.UpdateSwapDeltaAsync(endpoint, swapId, deltaUpdate).ConfigureAwait(false);
-                Engine.Instance.Log.Info($"Successfully updated delta for swap {swapId} ({deltaUpdate.Members.Count} members)");
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"Failed to update delta for swap {swapId}: {ex.Message}");
-                throw;
-            }
-        }
 
         #endregion
 
@@ -1745,6 +864,52 @@ namespace Puma.MDE.OPUS
             {
                 Engine.Instance.Log.Error("Process failed: " + ex.Message);
             }
+        }
+
+        private async Task<OpusOperationResult<T>> ExecuteSafelyAsync<T>(
+            Func<Task<T>> operation,
+            string operationName,
+            string friendlyErrorMessage)
+        {
+            try
+            {
+                T data = await operation().ConfigureAwait(false);
+                return OpusOperationResult<T>.SuccessWithData(data);
+            }
+            catch (Exception ex)
+            {
+                string fallbackFriendlyMessage = string.IsNullOrWhiteSpace(friendlyErrorMessage)
+                    ? DefaultFriendlyErrorMessage
+                    : friendlyErrorMessage;
+
+                Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
+                return OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+            }
+        }
+
+        private OpusOperationResult<T> ExecuteSafely<T>(Func<T> operation, string operationName, string friendlyErrorMessage)
+        {
+            try
+            {
+                return OpusOperationResult<T>.SuccessWithData(operation());
+            }
+            catch (Exception ex)
+            {
+                string fallbackFriendlyMessage = string.IsNullOrWhiteSpace(friendlyErrorMessage)
+                    ? DefaultFriendlyErrorMessage
+                    : friendlyErrorMessage;
+
+                Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
+                return OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+            }
+        }
+
+        public Task<OpusOperationResult<T>> TryExecuteWithRetryAsync<T>(Func<Task<T>> operation, string operationName, RetryPolicy policy)
+        {
+            return ExecuteSafelyAsync(
+                async () => await ExecuteWithRetryAsync(operation, operationName, policy).ConfigureAwait(false),
+                "TryExecuteWithRetryAsync",
+                "Unable to complete the OPUS retry operation right now.");
         }
     }
 }

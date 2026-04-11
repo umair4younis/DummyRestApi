@@ -63,6 +63,8 @@
   <ItemGroup>
     <Compile Include="AppSettings.cs" />
     <Compile Include="Engine.cs" />
+    <Compile Include="Engine.Runtime.cs" />
+    <Compile Include="Engine.Logging.cs" />
     <Compile Include="OPUS\Attributes\BasicEmailAttribute.cs" />
     <Compile Include="OPUS\Attributes\EmailDomainResolvableAttribute.cs" />
     <Compile Include="OPUS\Attributes\EmailDomainWhitelistAttribute.cs" />
@@ -102,6 +104,7 @@
     <Compile Include="OPUS\Models\GraphQLError.cs" />
     <Compile Include="OPUS\Models\GraphQLRequest.cs" />
     <Compile Include="OPUS\Models\GraphQLResponse.cs" />
+    <Compile Include="OPUS\Models\OpusOperationResult.cs" />
     <Compile Include="OPUS\Models\OpusApiResponse.cs" />
     <Compile Include="OPUS\Models\OpusTokenResponse.cs" />
     <Compile Include="OPUS\Models\OpuxErrorDetail.cs" />
@@ -132,17 +135,27 @@
     <Compile Include="OPUS\Models\TradeCurrency.cs" />
     <Compile Include="OPUS\Models\ValidationResultOpus.cs" />
     <Compile Include="OPUS\Models\WeightObject.cs" />
+    <Compile Include="OPUS\OpusApiClient.Swaps.cs" />
+    <Compile Include="OPUS\OpusApiClient.Safe.cs" />
     <Compile Include="OPUS\OpusApiClient.cs" />
+    <Compile Include="OPUS\OpusCircuitBreaker.Transient.cs" />
+    <Compile Include="OPUS\OpusCircuitBreaker.Metrics.cs" />
     <Compile Include="OPUS\OpusCircuitBreaker.cs" />
     <Compile Include="OPUS\OpusConfiguration.cs" />
     <Compile Include="OPUS\OpusGraphQLClient.cs" />
     <Compile Include="OPUS\OpusHttpClientHandler.cs" />
     <Compile Include="OPUS\OpusTokenProvider.cs" />
+    <Compile Include="OPUS\OpusWeightUpdateProcessor.Updates.cs" />
+    <Compile Include="OPUS\OpusWeightUpdateProcessor.Swaps.cs" />
+    <Compile Include="OPUS\OpusWeightUpdateProcessor.Quotes.cs" />
+    <Compile Include="OPUS\OpusWeightUpdateProcessor.Safe.cs" />
     <Compile Include="OPUS\OpusWeightUpdateProcessor.cs" />
     <Compile Include="OPUS\TestDelayService.cs" />
     <Compile Include="OPUS\Tests\FakeEngine.cs" />
     <Compile Include="OPUS\Tests\FakeHttpMessageHandler.cs" />
     <Compile Include="OPUS\Tests\FakeLogger.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusApiClient.QuotesAndDelta.cs" />
+    <Compile Include="OPUS\Tests\FakeOpusApiClient.PatchDelete.cs" />
     <Compile Include="OPUS\Tests\FakeOpusApiClient.cs" />
     <Compile Include="OPUS\Tests\FakeOpusCircuitBreaker.cs" />
     <Compile Include="OPUS\Tests\FakeOpusConfiguration.cs" />
@@ -156,6 +169,8 @@
     <Compile Include="OPUS\Utilities\TimeZoneHelper.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Program.DataPrep.cs" />
+    <Compile Include="Program.OpusIntegration.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

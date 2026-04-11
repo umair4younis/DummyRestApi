@@ -1,4 +1,5 @@
 ﻿using Puma.MDE.OPUS.Tests;
+using Puma.MDE.OPUS.Models;
 using System;
 using System.IO;
 using System.Net;
@@ -129,6 +130,21 @@ namespace Puma.MDE.OPUS
 
             _opusHttpClientHandler.ClientCertificates.Add(clientCert);
             Engine.Instance.Log.Info("[OpusHttpClientHandler] HttpClientHandler created with proxy, preauth, and client certificate");
+        }
+
+        public static OpusOperationResult<OpusHttpClientHandler> TryCreate(OpusConfiguration opusConfiguration)
+        {
+            try
+            {
+                return OpusOperationResult<OpusHttpClientHandler>.SuccessWithData(new OpusHttpClientHandler(opusConfiguration));
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusHttpClientHandler.TryCreate] Failed: " + ex.ToString());
+                return OpusOperationResult<OpusHttpClientHandler>.FailureWithData(
+                    "Unable to initialize OPUS HTTP handler.",
+                    ex.Message);
+            }
         }
 
         private ArgumentNullException LogAndCreateNullException(string paramName, string message)

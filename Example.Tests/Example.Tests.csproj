@@ -76,7 +76,13 @@
     <Compile Include="Tests\OpusApiClientTests.cs" />
     <Compile Include="Tests\OpusCircuitBreakerTests.cs" />
     <Compile Include="Tests\OpusGraphQLClientTests.cs" />
+    <Compile Include="Tests\OpusSafeWrapperTests.cs" />
+    <Compile Include="Tests\OpusWeightUpdateProcessorTests.Core.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.cs" />
+    <Compile Include="Tests\OpusWeightUpdateProcessorTests.DeltaFlows.cs" />
+    <Compile Include="Tests\OpusWeightUpdateProcessorTests.SwapLifecycle.cs" />
+    <Compile Include="Tests\OpusWeightUpdateProcessorTests.TrsLifecycle.cs" />
+    <Compile Include="Tests\OpusWeightUpdateProcessorTests.ValidationAndDelta.cs" />
     <Compile Include="Tests\ProgramSeamTests.cs" />
     <Compile Include="Tests\TestDelayService.cs" />
     <Compile Include="Tests\UnreliableService.cs" />

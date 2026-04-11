@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Puma.MDE.OPUS.Models;
 
 
 namespace Puma.MDE.OPUS
@@ -49,6 +50,24 @@ namespace Puma.MDE.OPUS
 
                 // Send request
                 return await client.SendAsync(request).ConfigureAwait(false);
+            }
+        }
+
+        public static async Task<OpusOperationResult<HttpResponseMessage>> TryPatchAsync(
+            this HttpClient client,
+            string requestUri,
+            object contentObject,
+            string mediaType = "application/json")
+        {
+            try
+            {
+                HttpResponseMessage response = await PatchAsync(client, requestUri, contentObject, mediaType).ConfigureAwait(false);
+                return OpusOperationResult<HttpResponseMessage>.SuccessWithData(response);
+            }
+            catch (Exception ex)
+            {
+                Puma.MDE.Engine.Instance.Log.Error("[HttpClientExtensions.TryPatchAsync] Failed: " + ex.ToString());
+                return OpusOperationResult<HttpResponseMessage>.FailureWithData("Unable to send PATCH request.", ex.Message);
             }
         }
     }

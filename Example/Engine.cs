@@ -10,7 +10,7 @@ namespace Puma.MDE
     [ClassInterface(ClassInterfaceType.AutoDual)]
     [Guid("520C0EBE-7BCA-431f-9AD6-85A92DD11B65")]
     [ComVisible(true)]
-    public sealed class Engine
+    public sealed partial class Engine
     {
         public ILogger Logger => Log;  // expose the real logger
 
@@ -85,119 +85,6 @@ namespace Puma.MDE
             }
         }
 
-
-        public void InfoException(string message, Exception ex)
-        {
-#if SOPHIS_7
-            Log.Info(ex, message);
-#else
-            Log.InfoException(message, ex);
-#endif
-        }
-
-
-        public void ErrorException(string message, Exception ex)
-        {
-#if SOPHIS_7
-            Log.Error(ex, message);
-#else
-            Log.ErrorException(message, ex);
-#endif
-        }
-
-        public void WarnException(string message, Exception ex)
-        {
-#if SOPHIS_7
-            Log.Warn(ex, message);
-#else
-            Log.WarnException(message, ex);
-#endif
-        }
-
-        public void FatalException(string message, Exception ex)
-        {
-#if SOPHIS_7
-            Log.Fatal(ex, message);
-#else
-            Log.FatalException(message, ex);
-#endif
-        }
-
-        public void DebugException(string message, Exception ex)
-        {
-#if SOPHIS_7
-            Log.Debug(ex, message);
-#else
-            Log.DebugException(message, ex);
-#endif
-        }
-
-        public void LogError(string message, Exception ex)
-        {
-#if SOPHIS_7
-            Log.Error(ex, message);
-#else
-            Log.Error(message, ex);
-#endif
-        }
-
-
-
-        public string GetHistomvtsName()
-        {
-#if SOPHIS_7
-            return "JOIN_POSITION_HISTOMVTS";
-#else
-            return "HISTOMVTS";
-#endif
-        }
-
-        public DateTime Today { get; set; }
-
-        static System.Reflection.Assembly MyResolveEventHandler(object sender, ResolveEventArgs args)
-        {
-            System.Reflection.Assembly a = null;
-
-            string serializationAssemblyPartialName = "PumaMDE";
-            string serializationAssemblyPartialNameWinUI = "PumaMDEWinUI";
-            string assemblyPartialNameHibernate = "nhibernate,";
-
-            if (args.Name.IndexOf(assemblyPartialNameHibernate, StringComparison.InvariantCultureIgnoreCase) != -1)
-                return System.Reflection.Assembly.GetAssembly(typeof(NHibernate.ISession));
-
-            if (args.Name.IndexOf(serializationAssemblyPartialName, StringComparison.InvariantCultureIgnoreCase) != -1 &&
-               args.Name.IndexOf(serializationAssemblyPartialNameWinUI, StringComparison.InvariantCultureIgnoreCase) == -1)
-            {
-                return System.Reflection.Assembly.GetExecutingAssembly();
-            }
-
-            return a;
-        }
-
-        [ComVisible(false)]
-        public void LogDebugArray(string name, double[] arr)
-        {
-            for (int i = 0; i < arr.Length; i++)
-                log.Debug(String.Format("{0}[{1}]={2}", name, i, arr[i]));
-        }
-        [ComVisible(false)]
-        public void LogDebugArray(string name, int[] arr)
-        {
-            for (int i = 0; i < arr.Length; i++)
-                log.Debug(String.Format("{0}[{1}]={2}", name, i, arr[i]));
-        }
-        [ComVisible(false)]
-        public void LogDebugArray(string name, long[] arr)
-        {
-            for (int i = 0; i < arr.Length; i++)
-                log.Debug(String.Format("{0}[{1}]={2}", name, i, arr[i]));
-        }
-
-        [ComVisible(false)]
-        public void LogDebugValue(string name, object val)
-        {
-            log.Debug(String.Format("{0}={1}", name, val));
-        }
 
     }
 

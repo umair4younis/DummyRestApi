@@ -11,6 +11,7 @@ namespace Puma.MDE.OPUS
 {
     public class OpusGraphQLClient
     {
+        private const string DefaultFriendlyErrorMessage = "Something went wrong while querying OPUS. Please try again or contact support.";
         private readonly OpusHttpClientHandler _opusHttpClientHandler;
         private readonly OpusTokenProvider _opusTokenProvider;
         private readonly OpusConfiguration _opusConfiguration;
@@ -30,6 +31,23 @@ namespace Puma.MDE.OPUS
                 failureThreshold: 4,      // slightly more tolerant for REST calls
                 breakSeconds: 90          // longer break time
             );
+        }
+
+        public static OpusOperationResult<OpusGraphQLClient> TryCreate(
+            OpusHttpClientHandler opusHttpClientHandler,
+            OpusTokenProvider opusTokenProvider,
+            OpusConfiguration opusConfiguration)
+        {
+            try
+            {
+                return OpusOperationResult<OpusGraphQLClient>.SuccessWithData(
+                    new OpusGraphQLClient(opusHttpClientHandler, opusTokenProvider, opusConfiguration));
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusGraphQLClient.TryCreate] Failed: " + ex.ToString());
+                return OpusOperationResult<OpusGraphQLClient>.FailureWithData(DefaultFriendlyErrorMessage, ex.Message);
+            }
         }
 
         public virtual async Task<T> ExecuteAsync<T>(string query, object variables = null)
@@ -110,6 +128,37 @@ namespace Puma.MDE.OPUS
             catch (AggregateException aex) when (aex.InnerException != null)
             {
                 throw aex.InnerException;
+            }
+        }
+
+        public async Task<OpusOperationResult<T>> TryExecuteAsync<T>(string query, object variables = null)
+        {
+            try
+            {
+                T data = await ExecuteAsync<T>(query, variables).ConfigureAwait(false);
+                return OpusOperationResult<T>.SuccessWithData(data);
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusGraphQLClient.TryExecuteAsync] Failed: " + ex.ToString());
+                return OpusOperationResult<T>.FailureWithData(DefaultFriendlyErrorMessage, ex.Message);
+            }
+        }
+
+        public OpusOperationResult<T> TryExecute<T>(string query, object variables = null)
+        {
+            try
+            {
+                T data = ExecuteAsync<T>(query, variables)
+                    .ConfigureAwait(false)
+                    .GetAwaiter()
+                    .GetResult();
+                return OpusOperationResult<T>.SuccessWithData(data);
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusGraphQLClient.TryExecute] Failed: " + ex.ToString());
+                return OpusOperationResult<T>.FailureWithData(DefaultFriendlyErrorMessage, ex.Message);
             }
         }
     }

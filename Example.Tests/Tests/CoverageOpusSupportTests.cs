@@ -25,10 +25,10 @@ namespace Puma.MDE.Tests
                 .SetValue(provider, DateTime.UtcNow.AddMinutes(5));
 
             string fromAsync = await provider.GetAccessTokenAsync();
-            string fromSync = provider.GetAccessToken();
+            string fromAsyncAgain = await provider.GetAccessTokenAsync();
 
             Assert.AreEqual("cached-token", fromAsync);
-            Assert.AreEqual("cached-token", fromSync);
+            Assert.AreEqual("cached-token", fromAsyncAgain);
         }
 
         [TestMethod]
@@ -41,7 +41,6 @@ namespace Puma.MDE.Tests
             });
 
             await AssertCompat.ThrowsAsync<InvalidOperationException>(() => provider.GetAccessTokenAsync());
-            AssertCompat.Throws<InvalidOperationException>(() => provider.GetAccessToken());
         }
 
         [TestMethod]

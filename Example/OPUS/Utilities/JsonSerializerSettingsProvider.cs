@@ -1,5 +1,7 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using System;
+using Puma.MDE.OPUS.Models;
 
 
 namespace Puma.MDE.OPUS.Utilities
@@ -42,6 +44,32 @@ namespace Puma.MDE.OPUS.Utilities
         public static T Deserialize<T>(string json)
         {
             return JsonConvert.DeserializeObject<T>(json, _settings);
+        }
+
+        public static OpusOperationResult<string> TrySerialize(object value)
+        {
+            try
+            {
+                return OpusOperationResult<string>.SuccessWithData(Serialize(value));
+            }
+            catch (Exception ex)
+            {
+                Puma.MDE.Engine.Instance.Log.Error("[JsonSerializerSettingsProvider.TrySerialize] Failed: " + ex.ToString());
+                return OpusOperationResult<string>.FailureWithData("Unable to serialize OPUS data.", ex.Message);
+            }
+        }
+
+        public static OpusOperationResult<T> TryDeserialize<T>(string json)
+        {
+            try
+            {
+                return OpusOperationResult<T>.SuccessWithData(Deserialize<T>(json));
+            }
+            catch (Exception ex)
+            {
+                Puma.MDE.Engine.Instance.Log.Error("[JsonSerializerSettingsProvider.TryDeserialize] Failed: " + ex.ToString());
+                return OpusOperationResult<T>.FailureWithData("Unable to read OPUS response data.", ex.Message);
+            }
         }
     }
 }

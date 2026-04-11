@@ -9,6 +9,7 @@ namespace Puma.MDE.OPUS
 {
     public class OpusTokenProvider
     {
+        private const string DefaultFriendlyErrorMessage = "Unable to acquire OPUS access token right now.";
         private readonly OpusConfiguration _opusConfiguration;
         private static readonly HttpClient _http = new HttpClient(new HttpClientHandler
         {
@@ -24,6 +25,19 @@ namespace Puma.MDE.OPUS
         {
             _opusConfiguration = opusConfiguration;
             Engine.Instance.Log.Info($"[OpusTokenProvider] Initialized with TokenUrl: {opusConfiguration?.TokenUrl ?? "NULL"}");
+        }
+
+        public static OpusOperationResult<OpusTokenProvider> TryCreate(OpusConfiguration opusConfiguration)
+        {
+            try
+            {
+                return OpusOperationResult<OpusTokenProvider>.SuccessWithData(new OpusTokenProvider(opusConfiguration));
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusTokenProvider.TryCreate] Failed: " + ex.ToString());
+                return OpusOperationResult<OpusTokenProvider>.FailureWithData(DefaultFriendlyErrorMessage, ex.Message);
+            }
         }
 
         public virtual async Task<string> GetAccessTokenAsync()
@@ -99,6 +113,37 @@ namespace Puma.MDE.OPUS
             {
                 Engine.Instance.Log.Error($"[OpusTokenProvider] Unexpected error in sync bridge: {ex.Message}");
                 throw;
+            }
+        }
+
+        public async Task<OpusOperationResult<string>> TryGetAccessTokenAsync()
+        {
+            try
+            {
+                string token = await GetAccessTokenAsync().ConfigureAwait(false);
+                return OpusOperationResult<string>.SuccessWithData(token);
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusTokenProvider.TryGetAccessTokenAsync] Failed: " + ex.ToString());
+                return OpusOperationResult<string>.FailureWithData(DefaultFriendlyErrorMessage, ex.Message);
+            }
+        }
+
+        public OpusOperationResult<string> TryGetAccessToken()
+        {
+            try
+            {
+                string token = GetAccessTokenAsync()
+                    .ConfigureAwait(false)
+                    .GetAwaiter()
+                    .GetResult();
+                return OpusOperationResult<string>.SuccessWithData(token);
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[OpusTokenProvider.TryGetAccessToken] Failed: " + ex.ToString());
+                return OpusOperationResult<string>.FailureWithData(DefaultFriendlyErrorMessage, ex.Message);
             }
         }
     }

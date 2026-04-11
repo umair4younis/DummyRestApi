@@ -42,6 +42,12 @@ namespace Puma.MDE.OPUS.Utilities
             {
                 string windowsTimeZone = TimeZone.CurrentTimeZone.StandardName;
 
+                if (string.IsNullOrWhiteSpace(windowsTimeZone))
+                {
+                    Puma.MDE.Engine.Instance.Log.Warn("[TimeZoneHelper] Windows timezone is null/empty. Falling back to Europe/Berlin.");
+                    return "Europe/Berlin";
+                }
+
                 // Exact match
                 if (WindowsToIanaMap.TryGetValue(windowsTimeZone, out string ianaTz))
                 {
@@ -58,10 +64,12 @@ namespace Puma.MDE.OPUS.Utilities
                 }
 
                 // Safe default for most European users
+                Puma.MDE.Engine.Instance.Log.Warn("[TimeZoneHelper] No IANA mapping found for timezone '" + windowsTimeZone + "'. Falling back to Europe/Berlin.");
                 return "Europe/Berlin";
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Puma.MDE.Engine.Instance.Log.Error("[TimeZoneHelper] Failed to resolve timezone mapping: " + ex.Message);
                 // In case of any unexpected error (very rare), return safe default
                 return "Europe/Berlin";
             }
