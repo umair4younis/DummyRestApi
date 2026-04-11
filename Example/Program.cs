@@ -43,7 +43,6 @@ namespace Puma.MDE
 
             if (!string.IsNullOrEmpty(parentAssetId))
             {
-                // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
                 await OpusApiIntegration(true, parentAssetId);
             }
 
@@ -80,6 +79,7 @@ namespace Puma.MDE
                 new object[] { "STOXX EUROPE 600 UTILITIES NR", "SX6R Index", 1085.30, "5.03%" },
                 new object[] { "DJ STOXX BANK RETURN", "SX7R Index", 2051.54, "5.87%" },
                 new object[] { "STOXX EUROPE 600 HEALTH CARE NR", "SXDR Index", 1793.15, "10.53%" },
+                new object[] { "CASH EUR", null, 3.15, "2.13%" },
                 new object[] { "DJ STOXX FINANCIAL SERVICES RETURN", "SXFR Index", 784.29, "4.69%" },
                 new object[] { "DJ STOXX INSURANCE RETURN", "SXIR Index", 1357.76, "4.65%" },
                 new object[] { "DJ STOXX CONSTRUCTION & MAT. RETURN", "SXOR Index", 981.10, "4.83%" },
@@ -97,12 +97,14 @@ namespace Puma.MDE
             var holdings = new List<ReportHolding>();
             foreach (var pr in filteredPortfolioRows)
             {
+                if (pr == null) continue;
+
                 holdings.Add(new ReportHolding
                 {
-                    Name = pr.GetValue(0).ToString(),
-                    BbgTicker = pr.GetValue(1).ToString(),
-                    Nominal = PercentageHelper.ParsePercentage(pr.GetValue(2).ToString()),
-                    MarketWeightPercent = PercentageHelper.ParsePercentage(pr.GetValue(3).ToString()),
+                    Name = pr.GetValue(0)?.ToString(),
+                    BbgTicker = pr.GetValue(1)?.ToString(),
+                    Nominal = PercentageHelper.ParsePercentage(pr.GetValue(2)?.ToString()),
+                    MarketWeightPercent = PercentageHelper.ParsePercentage(pr.GetValue(3)?.ToString()),
                     Currency = currency,
                     AssetType = assetType
                 });
@@ -176,7 +178,6 @@ namespace Puma.MDE
             var processor = new OpusWeightUpdateProcessor(opusGraphQLClient, opusApiClient);
             Engine.Instance.Log.Info(processor);
 
-            // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
             var swapId = await processor.ExecuteAsync();
             swapId = "019d2001-e11b-7000-a211-8c654386b53d";
             var quote = new AssetQuote
@@ -189,7 +190,6 @@ namespace Puma.MDE
             };
             Engine.Instance.Log.Info(quote);
 
-            // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
             var createdQuote = await processor.CreateSwapQuoteAsync(swapId, quote);
             Engine.Instance.Log.Info(createdQuote);
 
@@ -199,7 +199,6 @@ namespace Puma.MDE
             };
             Engine.Instance.Log.Info(swapNominalPatch);
 
-            // FIX: Use await instead of .GetAwaiter().GetResult() to prevent deadlocks
             await processor.UpdateSwapNominalAsync(swapId, swapNominalPatch);
 
             Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps are completed in OPUS API.");

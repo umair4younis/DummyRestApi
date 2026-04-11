@@ -131,7 +131,7 @@ namespace Puma.MDE.OPUS
             var validationResult = await ExecuteWithRetryAsync(
                 ValidateAssetCompositionIdAsync,
                 "Parent composition validation",
-                _parentValidationPolicy);
+                _parentValidationPolicy).ConfigureAwait(false);
 
             if (!validationResult.IsValid)
             {
@@ -146,7 +146,7 @@ namespace Puma.MDE.OPUS
                 validationResult.AssetUuid ?? "N/A"));
 
             // STEP 2: BBG validation
-            var validComponents = await ValidateAndCollectBbgUuidsAsync();
+            var validComponents = await ValidateAndCollectBbgUuidsAsync().ConfigureAwait(false);
 
             if (validComponents.Count == 0)
             {
@@ -163,7 +163,7 @@ namespace Puma.MDE.OPUS
                     "[WARNING] Total weight {0:F2}% (expected ~100%)", totalWeight));
             }
 
-            await SendWeightUpdatePayloadPatchAsync(validationResult.AssetUuid, validComponents);
+            await SendWeightUpdatePayloadPatchAsync(validationResult.AssetUuid, validComponents).ConfigureAwait(false);
             return validationResult.AssetUuid;
         }
 
@@ -185,7 +185,7 @@ namespace Puma.MDE.OPUS
                 try
                 {
                     Engine.Instance.Log.Debug($"[ExecuteWithRetryAsync] '{operationName}' - Attempt {attempt}/{policy.MaxRetries}");
-                    return await operation();
+                    return await operation().ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -203,7 +203,7 @@ namespace Puma.MDE.OPUS
                             "[ExecuteWithRetryAsync] '{0}' - Attempt {1}/{2} failed ({3}): {4}. Retrying in {5}ms...",
                             operationName, attempt, policy.MaxRetries, ex.GetType().Name, ex.Message.Trim(), delayMs));
 
-                        await TestDelayService.Delay(delayMs);
+                        await TestDelayService.Delay(delayMs).ConfigureAwait(false);
                         continue;
                     }
 
@@ -247,7 +247,7 @@ namespace Puma.MDE.OPUS
             {
                 // Execute using generic ExecuteAsync<T>
                 Engine.Instance.Log.Debug($"[ValidateAssetCompositionIdAsync] Executing GraphQL query for asset ID: {ParentAssetId}");
-                var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
+                var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query).ConfigureAwait(false);
 
                 // Access path is now response.assets.edges...
                 var node = response != null &&
@@ -327,7 +327,7 @@ namespace Puma.MDE.OPUS
                     found = await ExecuteWithRetryAsync(
                         () => FetchBbgBatchAsync(batch),  // now returns Task<...>
                         "BBG batch validation (" + batchDescription + ")",
-                        _bbgBatchPolicy);
+                        _bbgBatchPolicy).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -402,7 +402,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 // Gentle delay between batches
-                await Task.Delay(400);
+                await Task.Delay(400).ConfigureAwait(false);
             }
 
             if (errors.Count > 0)
@@ -430,7 +430,7 @@ namespace Puma.MDE.OPUS
                 string query = BuildBbgFilterQuery(batch);
                 Engine.Instance.Log.Debug($"[FetchBbgBatchAsync] Executing GraphQL query for {batch.Count} tickers");
 
-                var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
+                var response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query).ConfigureAwait(false);
 
                 var resultDict = new Dictionary<string, List<AssetNode>>();
 
@@ -560,12 +560,11 @@ namespace Puma.MDE.OPUS
             try
             {
                 Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Sending PATCH to endpoint: {endpoint}");
-                await _opusApiClient.PatchAsync(endpoint, compositionPayload, ParentAssetId);
+                await _opusApiClient.PatchAsync(endpoint, compositionPayload, ParentAssetId).ConfigureAwait(false);
                 Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully patched asset composition {ParentAssetId} with {components.Count} members");
 
-                // FIX: Use await instead of blocking on GetAwaiter().GetResult() to prevent deadlocks
                 Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Updating swap delta for swap ID: {parentUuid}");
-                await UpdateSwapDeltaAsync(parentUuid, deltaPayload);
+                await UpdateSwapDeltaAsync(parentUuid, deltaPayload).ConfigureAwait(false);
                 Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully updated swap in UCS service with swap id: {parentUuid} with {components.Count} members");
             }
             catch (ApiValidationException vex)
@@ -614,8 +613,8 @@ namespace Puma.MDE.OPUS
                 Engine.Instance.Log.Debug($"[GetTotalReturnSwapAsync] Endpoint: {endpoint}");
                 var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    return await _opusApiClient.GetAsync<TotalReturnSwapResponse>(endpoint);
-                });
+                    return await _opusApiClient.GetAsync<TotalReturnSwapResponse>(endpoint).ConfigureAwait(false);
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info(string.Format(
                     "[GetTotalReturnSwapAsync] Swap {0} retrieved successfully. Name: {1}, Nominal: {2}",
@@ -665,7 +664,7 @@ namespace Puma.MDE.OPUS
             {
                 string createdId = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    var result = await _opusApiClient.PostWithResponseAsync(endpoint, payload);
+                    var result = await _opusApiClient.PostWithResponseAsync(endpoint, payload).ConfigureAwait(false);
                     HttpResponseMessage response = result.Item1;
                     string body = result.Item2;
 
@@ -726,7 +725,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     return identifier;
-                });
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"Total Return Swap created successfully. Identifier: {createdId}");
                 return createdId;
@@ -800,9 +799,9 @@ namespace Puma.MDE.OPUS
             {
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    await _opusApiClient.PatchAsync(endpoint, patchPayload, encodeUrl: false);
+                    await _opusApiClient.PatchAsync(endpoint, patchPayload, encodeUrl: false).ConfigureAwait(false);
                     return true;
-                });
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"Total Return Swap {swapId} updated successfully (PATCH).");
             }
@@ -855,9 +854,9 @@ namespace Puma.MDE.OPUS
                 Engine.Instance.Log.Debug($"[DeleteTotalReturnSwapAsync] Endpoint: {endpoint}");
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    await _opusApiClient.DeleteAsync(endpoint);
+                    await _opusApiClient.DeleteAsync(endpoint).ConfigureAwait(false);
                     return true;
-                });
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"[DeleteTotalReturnSwapAsync] Total Return Swap {swapId} deleted successfully");
             }
@@ -913,8 +912,8 @@ namespace Puma.MDE.OPUS
             {
                 var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    return await _opusApiClient.GetAsync<OpusApiResponse<QuoteGetResource>>(endpoint);
-                });
+                    return await _opusApiClient.GetAsync<OpusApiResponse<QuoteGetResource>>(endpoint).ConfigureAwait(false);
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"Quotes retrieved for swap {swapId}, marketplace {marketplaceId}.");
                 return response;
@@ -957,9 +956,9 @@ namespace Puma.MDE.OPUS
             {
                 var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    var result = await _opusApiClient.PostWithResponseAsync(endpoint, quote);
+                    var result = await _opusApiClient.PostWithResponseAsync(endpoint, quote).ConfigureAwait(false);
                     return JsonConvert.DeserializeObject<OpusApiResponse<QuotePostResource>>(result.Item2);
-                });
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"Quote added to home marketplace for swap {swapId}.");
                 return response;
@@ -1014,9 +1013,9 @@ namespace Puma.MDE.OPUS
             {
                 var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    var result = await _opusApiClient.PatchWithResponseAsync(endpoint, patch); // assuming you add this method
+                    var result = await _opusApiClient.PatchWithResponseAsync(endpoint, patch).ConfigureAwait(false); // assuming you add this method
                     return JsonConvert.DeserializeObject<OpusApiResponse<QuotePatchResource>>(result.Item2);
-                });
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info(
                     $"Quote {quoteId} updated successfully for swap {swapId} in marketplace {marketplaceId}.");
@@ -1079,8 +1078,8 @@ namespace Puma.MDE.OPUS
             {
                 var result = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    return await _opusApiClient.DeleteWithResponseAsync(endpoint);
-                });
+                    return await _opusApiClient.DeleteWithResponseAsync(endpoint).ConfigureAwait(false);
+                }).ConfigureAwait(false);
 
                 HttpResponseMessage response = result.Item1;
                 string body = result.Item2;
@@ -1139,7 +1138,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                await _opusApiClient.PostAsync(endpoint, payload);
+                await _opusApiClient.PostAsync(endpoint, payload).ConfigureAwait(false);
                 Engine.Instance.Log.Info("Weight update successfully sent to OPUS API.");
             }
             catch (Exception ex)
@@ -1180,7 +1179,7 @@ namespace Puma.MDE.OPUS
 
             Engine.Instance.Log.Info($"CreateSwapQuoteAsync started for swap {swapId}");
 
-            var validation = await ValidateSwapAsync(swapId, requireRecentQuote: false, minNotional: _minNotional);
+            var validation = await ValidateSwapAsync(swapId, requireRecentQuote: false, minNotional: _minNotional).ConfigureAwait(false);
 
             if (!validation.IsValid)
             {
@@ -1197,7 +1196,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                var result = await _opusApiClient.AddAssetQuoteToHomeMarketplaceAsync(endpoint, swapId, quote, marketplaceId);
+                var result = await _opusApiClient.AddAssetQuoteToHomeMarketplaceAsync(endpoint, swapId, quote, marketplaceId).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"Quote successfully created for swap {swapId}. New quote time: {quote.Time:yyyy-MM-dd HH:mm}");
                 return result;
@@ -1232,7 +1231,7 @@ namespace Puma.MDE.OPUS
 
             Engine.Instance.Log.Info($"GetSwapQuotesAsync started for swap {swapId}, marketplace: {marketplaceId}");
 
-            var validation = await ValidateSwapAsync(swapId, requireRecentQuote: false, minNotional: _minNotional);
+            var validation = await ValidateSwapAsync(swapId, requireRecentQuote: false, minNotional: _minNotional).ConfigureAwait(false);
 
             if (!validation.IsValid)
             {
@@ -1244,7 +1243,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                var result = await _opusApiClient.GetSwapQuotesAsync(endpoint, swapId, marketplaceId);
+                var result = await _opusApiClient.GetSwapQuotesAsync(endpoint, swapId, marketplaceId).ConfigureAwait(false);
                 Engine.Instance.Log.Info($"Successfully retrieved {result?.Resource?.Quotes?.Count ?? 0} quotes for swap {swapId}");
                 return result;
             }
@@ -1296,7 +1295,7 @@ namespace Puma.MDE.OPUS
                 swapId,
                 requireRecentQuote: true,
                 minNotional: _minNotional
-            );
+            ).ConfigureAwait(false);
 
             if (!validation.IsValid)
             {
@@ -1316,7 +1315,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch);
+                await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"Successfully updated asset-at-marketplaces" +
                                         (hasNominal ? " and nominal" : "") +
@@ -1360,7 +1359,7 @@ namespace Puma.MDE.OPUS
                 swapId,
                 requireRecentQuote: false,
                 minNotional: _minNotional
-            );
+            ).ConfigureAwait(false);
 
             if (!validation.IsValid)
             {
@@ -1394,7 +1393,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch);
+                await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch).ConfigureAwait(false);
                 Engine.Instance.Log.Info($"Successfully updated nominal for swap {swapId} to {patch.Nominal.Quantity:N2}");
             }
             catch (Exception ex)
@@ -1434,8 +1433,8 @@ namespace Puma.MDE.OPUS
                 var response = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
                     // Use the generic PostWithResponseAsync<T> with correct base URL
-                    return await _opusApiClient.PostWithResponseAsync<SwapDeltaFetchResponse>(endpoint, request);
-                });
+                    return await _opusApiClient.PostWithResponseAsync<SwapDeltaFetchResponse>(endpoint, request).ConfigureAwait(false);
+                }).ConfigureAwait(false);
 
                 // Calculate summary counts safely for .NET 4.8
                 int totalSwaps = 0;
@@ -1512,7 +1511,7 @@ namespace Puma.MDE.OPUS
                 swapId,
                 requireRecentQuote: true,
                 minNotional: _minNotional
-            );
+            ).ConfigureAwait(false);
 
             if (!validation.IsValid)
             {
@@ -1547,7 +1546,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                var result = await _opusApiClient.UpdateSwapDeltaAsync(endpoint, swapId, deltaUpdate);
+                var result = await _opusApiClient.UpdateSwapDeltaAsync(endpoint, swapId, deltaUpdate).ConfigureAwait(false);
                 Engine.Instance.Log.Info($"Successfully updated delta for swap {swapId} ({deltaUpdate.Members.Count} members)");
                 return result;
             }
@@ -1582,7 +1581,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                var swapResponse = await GetTotalReturnSwapAsync(swapId);
+                var swapResponse = await GetTotalReturnSwapAsync(swapId).ConfigureAwait(false);
 
                 if (swapResponse == null)
                 {
@@ -1656,7 +1655,7 @@ namespace Puma.MDE.OPUS
                       }
                     }";
 
-                        AssetsQueryResponse response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query);
+                        AssetsQueryResponse response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query).ConfigureAwait(false);
 
                         AssetNode node = response?.assets?.edges?.FirstOrDefault()?.node;
 
@@ -1670,7 +1669,7 @@ namespace Puma.MDE.OPUS
                             return new ValidationResultOpus { IsValid = false, AssetName = node.name, AssetUuid = node.uuid, ErrorMessage = "Invalid type" };
 
                         return new ValidationResultOpus { IsValid = true, AssetName = node.name, AssetUuid = node.uuid };
-                    });
+                    }).ConfigureAwait(false);
 
                 if (!validationResult.IsValid)
                 {
@@ -1696,10 +1695,10 @@ namespace Puma.MDE.OPUS
                         }
 
                         string batchQuery = BuildBbgFilterQuery(components?.Select(component => component.BbgTicker)?.ToList());
-                        AssetsQueryResponse batchResponse1 = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(batchQuery);
+                        AssetsQueryResponse batchResponse1 = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(batchQuery).ConfigureAwait(false);
 
                         return components;
-                    });
+                    }).ConfigureAwait(false);
 
                 if (validComponents.Count == 0)
                 {
@@ -1727,12 +1726,12 @@ namespace Puma.MDE.OPUS
                             }).ToArray()
                         };
 
-                        await _opusApiClient.PostAsync("/api/asset-compositions/update-weights", payload);
+                        await _opusApiClient.PostAsync("/api/asset-compositions/update-weights", payload).ConfigureAwait(false);
 
                         Engine.Instance.Log.Info("Step 3 complete - Weights updated successfully");
 
                         return true; // dummy return
-                    });
+                    }).ConfigureAwait(false);
 
                 // Print metrics after full process
                 Engine.Instance.Log.Info(_opusCircuitBreaker.GetMetricsSnapshot());

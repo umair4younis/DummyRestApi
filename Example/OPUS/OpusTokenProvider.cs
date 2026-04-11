@@ -40,24 +40,24 @@ namespace Puma.MDE.OPUS
             {
                 { "grant_type", "client_credentials" },
                 { "client_id", _opusConfiguration.ClientId },
-                { "client_secret", "***" }  // Don't log secret
+                { "client_secret", _opusConfiguration.ClientSecret }
             };
 
             try
             {
                 var content = new FormUrlEncodedContent(body);
                 Engine.Instance.Log.Debug($"[OpusTokenProvider] POST to {_opusConfiguration.TokenUrl}");
-                var response = await _http.PostAsync(_opusConfiguration.TokenUrl, content);
+                var response = await _http.PostAsync(_opusConfiguration.TokenUrl, content).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    string errorBody = await response.Content.ReadAsStringAsync();
+                    string errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     Engine.Instance.Log.Error($"[OpusTokenProvider] Token request failed: {response.StatusCode} - {errorBody}");
                 }
 
                 response.EnsureSuccessStatusCode();
 
-                var json = await response.Content.ReadAsStringAsync();
+                var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 var tokenResponse = JsonConvert.DeserializeObject<OpusTokenResponse>(json);
 
                 _token = tokenResponse.access_token;
@@ -78,6 +78,7 @@ namespace Puma.MDE.OPUS
             }
         }
 
+        [Obsolete("Use GetAccessTokenAsync() and await it from the caller. Calling this synchronous bridge from a WinForms/WPF UI thread can freeze the UI.")]
         public string GetAccessToken()
         {
             // IMPORTANT: Calling sync-wrapped async methods can cause deadlocks in .NET 4.8

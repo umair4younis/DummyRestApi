@@ -159,7 +159,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
-    <None Include="OPUS\Cert\api.pfx" />
+    <Content Include="OPUS\Cert\api.pfx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Include="DLL\Microsoft.VisualStudio.QualityTools.UnitTestFramework.dll" />

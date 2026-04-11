@@ -38,7 +38,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                string token = await _opusTokenProvider.GetAccessTokenAsync();
+                string token = await _opusTokenProvider.GetAccessTokenAsync().ConfigureAwait(false);
 
                 var request = new GraphQLRequest
                 {
@@ -59,7 +59,7 @@ namespace Puma.MDE.OPUS
                 {
                     HttpResponseMessage response = await _httpClient.PostAsync(
                         _opusConfiguration.GraphQlUrl,
-                        content);
+                        content).ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -68,7 +68,7 @@ namespace Puma.MDE.OPUS
                             string.Format("GraphQL request failed with status {0}", response.StatusCode));
                     }
 
-                    string responseJson = await response.Content.ReadAsStringAsync();
+                    string responseJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     Engine.Instance.Log.Debug($"[OpusGraphQLClient] Response received, parsing...");
 
                     var graphQLResponse = JsonConvert.DeserializeObject<GraphQLResponse<T>>(responseJson);
@@ -84,7 +84,7 @@ namespace Puma.MDE.OPUS
 
                     Engine.Instance.Log.Info($"[OpusGraphQLClient] GraphQL query succeeded for {typeof(T).Name}");
                     return graphQLResponse.data;
-                });
+                }).ConfigureAwait(false);
 
                 return result;
             }
@@ -95,6 +95,7 @@ namespace Puma.MDE.OPUS
             }
         }
 
+        [Obsolete("Use ExecuteAsync<T>() and await it from the caller. Calling this synchronous bridge from a WinForms/WPF UI thread can freeze the UI.")]
         public T Execute<T>(string query, object variables = null)
         {
             // IMPORTANT: Blocking on async methods can cause deadlocks in .NET 4.8

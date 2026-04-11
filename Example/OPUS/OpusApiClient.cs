@@ -76,14 +76,14 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
                 Engine.Instance.Log.Debug($"[OpusApiClient] GET request to: {fullUrl}");
 
                 T result = await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    HttpResponseMessage response = await _httpClient.GetAsync(fullUrl);
+                    HttpResponseMessage response = await _httpClient.GetAsync(fullUrl).ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -93,9 +93,9 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Debug($"[OpusApiClient] GET succeeded, deserializing response type {typeof(T).Name}");
-                    string json = await response.Content.ReadAsStringAsync();
+                    string json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     return JsonSerializerSettingsProvider.Deserialize<T>(json);
-                });
+                }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"[OpusApiClient] GetAsync<{typeof(T).Name}> completed successfully");
                 return result;
@@ -116,12 +116,12 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
 
-                HttpResponseMessage response = await _httpClient.GetAsync(fullUrl);
-                string body = await response.Content.ReadAsStringAsync();
+                HttpResponseMessage response = await _httpClient.GetAsync(fullUrl).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -132,7 +132,7 @@ namespace Puma.MDE.OPUS
 
                 Engine.Instance.Log.Info($"[GET] Succeeded: {endpoint} - Status: {response.StatusCode}");
                 return new Tuple<HttpResponseMessage, string>(response, body);
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -144,7 +144,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string jsonBody = JsonSerializerSettingsProvider.Serialize(data);
                 var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
@@ -154,7 +154,7 @@ namespace Puma.MDE.OPUS
 
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content);
+                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content).ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -165,7 +165,7 @@ namespace Puma.MDE.OPUS
 
                     Engine.Instance.Log.Info($"[POST] Succeeded: {endpoint} - Status: {response.StatusCode}");
                     return response;
-                });
+                }).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -183,15 +183,15 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
 
                 string json = JsonSerializerSettingsProvider.Serialize(data);
                 using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
                 {
-                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content);
-                    string body = await response.Content.ReadAsStringAsync();
+                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content).ConfigureAwait(false);
+                    string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -210,7 +210,7 @@ namespace Puma.MDE.OPUS
                     Engine.Instance.Log.Info($"[POST] Succeeded: {endpoint} - Status: {response.StatusCode}");
                     return new Tuple<HttpResponseMessage, string>(response, body);
                 }
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -223,15 +223,15 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
 
                 string json = JsonSerializerSettingsProvider.Serialize(data);
                 using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
                 {
-                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content);
-                    string body = await response.Content.ReadAsStringAsync();
+                    HttpResponseMessage response = await _httpClient.PostAsync(fullUrl, content).ConfigureAwait(false);
+                    string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -243,7 +243,7 @@ namespace Puma.MDE.OPUS
                     Engine.Instance.Log.Info($"[POST Generic] Succeeded: {endpoint} - Status: {response.StatusCode}");
                     return JsonSerializerSettingsProvider.Deserialize<T>(body);
                 }
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -255,7 +255,7 @@ namespace Puma.MDE.OPUS
 
             try
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
                 if (encodeUrl)
@@ -270,18 +270,18 @@ namespace Puma.MDE.OPUS
 
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload);
+                    HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload).ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        string errorBody = await response.Content.ReadAsStringAsync();
+                        string errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                         var message = string.Format($"PATCH {endpoint} failed ({response.StatusCode}): {errorBody}");
                         Engine.Instance.Log.Error(message);
                         throw new HttpRequestException(message);
                     }
 
                     Engine.Instance.Log.Info($"[PATCH] Succeeded: {endpoint} - Status: {response.StatusCode}");
-                });
+                }).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -295,7 +295,7 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public virtual async Task PatchAsync(string endpoint, object patchPayload, string parentAssetId)
         {
-            await PrepareAuthHeaderAsync();
+            await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
             string fullUrl = BuildFullUrl(endpoint);
 
@@ -307,7 +307,7 @@ namespace Puma.MDE.OPUS
                 // Wrap in circuit breaker for consistency with other methods
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    response = await _httpClient.PatchAsync(fullUrl, patchPayload);
+                    response = await _httpClient.PatchAsync(fullUrl, patchPayload).ConfigureAwait(false);
 
                     if (response.IsSuccessStatusCode)
                     {
@@ -315,9 +315,9 @@ namespace Puma.MDE.OPUS
                         return true;
                     }
 
-                    responseBody = await response.Content.ReadAsStringAsync();
+                    responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     return false;
-                });
+                }).ConfigureAwait(false);
 
                 // If we get here and response succeeded, return early
                 if (response?.IsSuccessStatusCode == true)
@@ -399,12 +399,12 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
 
-                HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload);
-                string body = await response.Content.ReadAsStringAsync();
+                HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -415,7 +415,7 @@ namespace Puma.MDE.OPUS
 
                 Engine.Instance.Log.Info($"[PATCH] Succeeded: {endpoint} - Status: {response.StatusCode}");
                 return new Tuple<HttpResponseMessage, string>(response, body);
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -425,7 +425,7 @@ namespace Puma.MDE.OPUS
         {
             Engine.Instance.Log.Info($"[PUT] Starting request to endpoint: {endpoint}");
 
-            await PrepareAuthHeaderAsync();
+            await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
             string fullUrl = BuildFullUrl(endpoint);
 
@@ -436,11 +436,11 @@ namespace Puma.MDE.OPUS
             {
                 await _opusCircuitBreaker.ExecuteAsync(async () =>
                 {
-                    HttpResponseMessage response = await _httpClient.PutAsync(fullUrl, content);
+                    HttpResponseMessage response = await _httpClient.PutAsync(fullUrl, content).ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        string errorBody = await response.Content.ReadAsStringAsync();
+                        string errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                         var message = $"[PUT] Failed: {endpoint} - Status: {(int)response.StatusCode} - Body: {errorBody.Substring(0, Math.Min(500, errorBody.Length))}";
                         Engine.Instance.Log.Error(message);
                         throw new HttpRequestException(message);
@@ -448,7 +448,7 @@ namespace Puma.MDE.OPUS
 
                     Engine.Instance.Log.Info($"[PUT] Succeeded: {endpoint} - Status: {response.StatusCode}");
                     return response;
-                });
+                }).ConfigureAwait(false);
             }
             finally
             {
@@ -465,15 +465,15 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
 
                 string json = JsonSerializerSettingsProvider.Serialize(data);
                 using (var content = new StringContent(json, Encoding.UTF8, "application/json"))
                 {
-                    HttpResponseMessage response = await _httpClient.PutAsync(fullUrl, content);
-                    string body = await response.Content.ReadAsStringAsync();
+                    HttpResponseMessage response = await _httpClient.PutAsync(fullUrl, content).ConfigureAwait(false);
+                    string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                     if (!response.IsSuccessStatusCode)
                     {
@@ -485,7 +485,7 @@ namespace Puma.MDE.OPUS
                     Engine.Instance.Log.Info($"[PUT] Succeeded: {endpoint} - Status: {response.StatusCode}");
                     return new Tuple<HttpResponseMessage, string>(response, body);
                 }
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -493,24 +493,24 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public virtual async Task DeleteAsync(string endpoint)
         {
-            await PrepareAuthHeaderAsync();
+            await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
             string fullUrl = BuildFullUrl(endpoint);
 
             await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                HttpResponseMessage response = await _httpClient.DeleteAsync(fullUrl);
+                HttpResponseMessage response = await _httpClient.DeleteAsync(fullUrl).ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    string errorBody = await response.Content.ReadAsStringAsync();
+                    string errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     var message = string.Format("DELETE {0} failed with status {1}: {2}", endpoint, (int)response.StatusCode, errorBody);
                     Engine.Instance.Log.Error(message);
                     throw new HttpRequestException(message);
                 }
 
                 return response;
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -522,12 +522,12 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
 
                 string fullUrl = BuildFullUrl(endpoint);
 
-                HttpResponseMessage response = await _httpClient.DeleteAsync(fullUrl);
-                string body = await response.Content.ReadAsStringAsync();
+                HttpResponseMessage response = await _httpClient.DeleteAsync(fullUrl).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -538,7 +538,7 @@ namespace Puma.MDE.OPUS
 
                 Engine.Instance.Log.Info($"[DELETE] Succeeded: {endpoint} - Status: {response.StatusCode}");
                 return new Tuple<HttpResponseMessage, string>(response, body);
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -551,14 +551,14 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
                 string fullUrl = BuildFullUrl(endpoint);
 
                 string json = JsonSerializerSettingsProvider.Serialize(quote);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync(fullUrl, content);
-                string body = await response.Content.ReadAsStringAsync();
+                var response = await _httpClient.PostAsync(fullUrl, content).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -569,7 +569,7 @@ namespace Puma.MDE.OPUS
 
                 var result = JsonSerializerSettingsProvider.Deserialize<OpusApiResponse<AssetQuote>>(body);
                 return result;
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -582,11 +582,11 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
                 string fullUrl = BuildFullUrl(endpoint);
 
-                var response = await _httpClient.GetAsync(fullUrl);
-                string body = await response.Content.ReadAsStringAsync();
+                var response = await _httpClient.GetAsync(fullUrl).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -596,7 +596,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 return JsonSerializerSettingsProvider.Deserialize<OpusApiResponse<QuoteGetResource>>(body);
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -613,12 +613,12 @@ namespace Puma.MDE.OPUS
 
             await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
                 string fullUrl = BuildFullUrl(endpoint);
 
-                HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload);
+                HttpResponseMessage response = await _httpClient.PatchAsync(fullUrl, patchPayload).ConfigureAwait(false);
 
-                string body = await response.Content.ReadAsStringAsync();
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -628,7 +628,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 Engine.Instance.Log.Info($"PATCH swap succeeded for swap {swapId}");
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -643,14 +643,14 @@ namespace Puma.MDE.OPUS
 
             return await _opusCircuitBreaker.ExecuteAsync(async () =>
             {
-                await PrepareAuthHeaderAsync();
+                await PrepareAuthHeaderAsync().ConfigureAwait(false);
                 string fullUrl = BuildFullUrl(endpoint);
 
                 string json = JsonSerializerSettingsProvider.Serialize(deltaUpdate);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PutAsync(fullUrl, content);
-                string body = await response.Content.ReadAsStringAsync();
+                var response = await _httpClient.PutAsync(fullUrl, content).ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -686,7 +686,7 @@ namespace Puma.MDE.OPUS
                     Engine.Instance.Log.Error($"Failed to deserialize delta update response: {jex.Message}\nBody: {body}");
                     throw new ApiResponseException("Invalid response format from server", body, jex);
                 }
-            });
+            }).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -694,7 +694,7 @@ namespace Puma.MDE.OPUS
         /// </summary>
         private async Task PrepareAuthHeaderAsync()
         {
-            string token = await _opusTokenProvider.GetAccessTokenAsync();
+            string token = await _opusTokenProvider.GetAccessTokenAsync().ConfigureAwait(false);
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
     }
