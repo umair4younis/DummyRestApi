@@ -85,6 +85,13 @@ namespace Puma.MDE.OPUS
             return $"{baseUrl.TrimEnd('/')}/{endpoint}";
         }
 
+        private void RegisterEndpointSuccess(string endpoint, string operation)
+        {
+            string safeOperation = string.IsNullOrWhiteSpace(operation) ? "Endpoint" : operation.Trim();
+            string safeEndpoint = string.IsNullOrWhiteSpace(endpoint) ? "unknown endpoint" : endpoint.Trim();
+            OpusMessageTrailContext.AddCompletedEndpointSuccess($"{safeOperation} call completed successfully ({safeEndpoint}).");
+        }
+
         /// <summary>
         /// Sends a GET request to the specified endpoint and deserializes the response.
         /// </summary>
@@ -116,6 +123,7 @@ namespace Puma.MDE.OPUS
                 }).ConfigureAwait(false);
 
                 Engine.Instance.Log.Info($"[OpusApiClient] GetAsync<{typeof(T).Name}> completed successfully");
+                RegisterEndpointSuccess(endpoint, "GET endpoint");
                 return result;
             }
             catch (Exception ex)
@@ -149,6 +157,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 Engine.Instance.Log.Info($"[GET] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                RegisterEndpointSuccess(endpoint, "GET endpoint");
                 return new Tuple<HttpResponseMessage, string>(response, body);
             }).ConfigureAwait(false);
         }
@@ -182,6 +191,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Info($"[POST] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    RegisterEndpointSuccess(endpoint, "POST endpoint");
                     return response;
                 }).ConfigureAwait(false);
             }
@@ -226,6 +236,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Info($"[POST] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    RegisterEndpointSuccess(endpoint, "POST endpoint");
                     return new Tuple<HttpResponseMessage, string>(response, body);
                 }
             }).ConfigureAwait(false);
@@ -259,6 +270,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Info($"[POST Generic] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    RegisterEndpointSuccess(endpoint, "POST endpoint");
                     return JsonSerializerSettingsProvider.Deserialize<T>(body);
                 }
             }).ConfigureAwait(false);
@@ -299,6 +311,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Info($"[PATCH] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    RegisterEndpointSuccess(endpoint, "PATCH endpoint");
                 }).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -330,6 +343,7 @@ namespace Puma.MDE.OPUS
                     if (response.IsSuccessStatusCode)
                     {
                         Engine.Instance.Log.Info($"PATCH {endpoint} succeeded ({response.StatusCode})");
+                        RegisterEndpointSuccess(endpoint, "PATCH endpoint");
                         return true;
                     }
 
@@ -432,6 +446,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 Engine.Instance.Log.Info($"[PATCH] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                RegisterEndpointSuccess(endpoint, "PATCH endpoint");
                 return new Tuple<HttpResponseMessage, string>(response, body);
             }).ConfigureAwait(false);
         }
@@ -465,6 +480,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Info($"[PUT] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    RegisterEndpointSuccess(endpoint, "PUT endpoint");
                     return response;
                 }).ConfigureAwait(false);
             }
@@ -501,6 +517,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     Engine.Instance.Log.Info($"[PUT] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                    RegisterEndpointSuccess(endpoint, "PUT endpoint");
                     return new Tuple<HttpResponseMessage, string>(response, body);
                 }
             }).ConfigureAwait(false);
@@ -526,6 +543,8 @@ namespace Puma.MDE.OPUS
                     Engine.Instance.Log.Error(message);
                     throw new HttpRequestException(message);
                 }
+
+                RegisterEndpointSuccess(endpoint, "DELETE endpoint");
 
                 return response;
             }).ConfigureAwait(false);
@@ -555,6 +574,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 Engine.Instance.Log.Info($"[DELETE] Succeeded: {endpoint} - Status: {response.StatusCode}");
+                RegisterEndpointSuccess(endpoint, "DELETE endpoint");
                 return new Tuple<HttpResponseMessage, string>(response, body);
             }).ConfigureAwait(false);
         }
@@ -579,7 +599,9 @@ namespace Puma.MDE.OPUS
             {
                 string message = string.IsNullOrWhiteSpace(friendlyErrorMessage) ? DefaultFriendlyErrorMessage : friendlyErrorMessage;
                 Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                return OpusOperationResult<T>.FailureWithData(message, ex.Message);
+                OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(message, ex.Message);
+                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+                return failure;
             }
         }
 

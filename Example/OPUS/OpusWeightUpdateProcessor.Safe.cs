@@ -1,13 +1,14 @@
 ﻿using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+
 
 namespace Puma.MDE.OPUS
 {
     public partial class OpusWeightUpdateProcessor
     {
-
         private async Task<OpusOperationResult> ExecuteSafelyAsync(
             Func<Task> operation,
             string operationName,
@@ -20,15 +21,18 @@ namespace Puma.MDE.OPUS
             }
             catch (Exception ex)
             {
-                string fallbackFriendlyMessage = string.IsNullOrWhiteSpace(friendlyErrorMessage)
+                string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+                    ? ex.Message
+                    : string.IsNullOrWhiteSpace(friendlyErrorMessage)
                     ? DefaultFriendlyErrorMessage
                     : friendlyErrorMessage;
 
                 Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                return OpusOperationResult.Failure(fallbackFriendlyMessage, ex.Message);
+                OpusOperationResult failure = OpusOperationResult.Failure(fallbackFriendlyMessage, ex.Message);
+                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+                return failure;
             }
         }
-
 
         public Task<OpusOperationResult<ValidationResultOpus>> TryValidateAssetCompositionIdAsync()
         {
@@ -38,7 +42,6 @@ namespace Puma.MDE.OPUS
                 "Unable to validate OPUS asset composition right now.");
         }
 
-
         public Task<OpusOperationResult<List<ComponentInfo>>> TryValidateAndCollectBbgUuidsAsync()
         {
             return ExecuteSafelyAsync(
@@ -46,7 +49,6 @@ namespace Puma.MDE.OPUS
                 "TryValidateAndCollectBbgUuidsAsync",
                 "Unable to validate Bloomberg tickers right now.");
         }
-
 
         public Task<OpusOperationResult<Dictionary<string, List<AssetNode>>>> TryFetchBbgBatchAsync(List<string> batch)
         {
@@ -56,7 +58,6 @@ namespace Puma.MDE.OPUS
                 "Unable to load Bloomberg batch data right now.");
         }
 
-
         public OpusOperationResult<string> TryBuildBbgFilterQuery(List<string> bbgTickers)
         {
             return ExecuteSafely(
@@ -64,7 +65,6 @@ namespace Puma.MDE.OPUS
                 "TryBuildBbgFilterQuery",
                 "Unable to build Bloomberg filter query right now.");
         }
-
 
         public Task<OpusOperationResult> TrySendWeightUpdatePayloadPatchAsync(string parentUuid, List<ComponentInfo> components)
         {
@@ -74,7 +74,6 @@ namespace Puma.MDE.OPUS
                 "Unable to send OPUS weight update right now.");
         }
 
-
         public Task<OpusOperationResult<string>> TryExecuteAsync()
         {
             return ExecuteSafelyAsync(
@@ -82,7 +81,6 @@ namespace Puma.MDE.OPUS
                 "TryExecuteAsync",
                 "Unable to complete OPUS processing. Please verify input data and try again.");
         }
-
 
         public Task<OpusOperationResult<TotalReturnSwapResponse>> TryGetTotalReturnSwapAsync(string swapId)
         {
@@ -92,7 +90,6 @@ namespace Puma.MDE.OPUS
                 "Unable to retrieve swap details right now.");
         }
 
-
         public Task<OpusOperationResult<string>> TryCreateTotalReturnSwapAsync(object payload)
         {
             return ExecuteSafelyAsync(
@@ -100,7 +97,6 @@ namespace Puma.MDE.OPUS
                 "TryCreateTotalReturnSwapAsync",
                 "Unable to create swap right now.");
         }
-
 
         public Task<OpusOperationResult> TryUpdateTotalReturnSwapAsync(string swapId, object patchPayload)
         {
@@ -110,7 +106,6 @@ namespace Puma.MDE.OPUS
                 "Unable to update swap right now.");
         }
 
-
         public Task<OpusOperationResult> TryDeleteTotalReturnSwapAsync(string swapId)
         {
             return ExecuteSafelyAsync(
@@ -118,7 +113,6 @@ namespace Puma.MDE.OPUS
                 "TryDeleteTotalReturnSwapAsync",
                 "Unable to delete swap right now.");
         }
-
 
         public Task<OpusOperationResult<OpusApiResponse<QuoteGetResource>>> TryGetAssetQuoteAsync(string swapId, string marketplaceId)
         {
@@ -128,7 +122,6 @@ namespace Puma.MDE.OPUS
                 "Unable to retrieve asset quotes right now.");
         }
 
-
         public Task<OpusOperationResult<OpusApiResponse<QuotePostResource>>> TryAddAssetQuoteToHomeMarketplaceAsync(string swapId, AssetQuote quote)
         {
             return ExecuteSafelyAsync(
@@ -136,7 +129,6 @@ namespace Puma.MDE.OPUS
                 "TryAddAssetQuoteToHomeMarketplaceAsync",
                 "Unable to add asset quote right now.");
         }
-
 
         public Task<OpusOperationResult<OpusApiResponse<AssetQuote>>> TryCreateSwapQuoteAsync(string swapId, AssetQuote quote, string marketplaceId = "home")
         {
@@ -146,7 +138,6 @@ namespace Puma.MDE.OPUS
                 "Unable to create swap quote right now.");
         }
 
-
         public Task<OpusOperationResult<OpusApiResponse<QuoteGetResource>>> TryGetSwapQuotesAsync(string swapId, string marketplaceId = "home")
         {
             return ExecuteSafelyAsync(
@@ -154,7 +145,6 @@ namespace Puma.MDE.OPUS
                 "TryGetSwapQuotesAsync",
                 "Unable to load swap quotes right now.");
         }
-
 
         public Task<OpusOperationResult<OpusApiResponse<QuotePatchResource>>> TryUpdateAssetQuoteAsync(string swapId, string marketplaceId, string quoteId, AssetQuotePatch patch)
         {
@@ -164,7 +154,6 @@ namespace Puma.MDE.OPUS
                 "Unable to update swap quote right now.");
         }
 
-
         public Task<OpusOperationResult> TryDeleteAssetQuoteWithResponseAsync(string swapId, string marketplaceId, string quoteId)
         {
             return ExecuteSafelyAsync(
@@ -172,7 +161,6 @@ namespace Puma.MDE.OPUS
                 "TryDeleteAssetQuoteWithResponseAsync",
                 "Unable to delete swap quote right now.");
         }
-
 
         public Task<OpusOperationResult> TrySendWeightUpdatePayloadPostAsync(string parentUuid, List<ComponentInfo> components)
         {
@@ -182,7 +170,6 @@ namespace Puma.MDE.OPUS
                 "Unable to send OPUS weight update right now.");
         }
 
-
         public Task<OpusOperationResult> TryUpdateSwapAssetAtMarketplacesAsync(string swapId, SwapPatch patch)
         {
             return ExecuteSafelyAsync(
@@ -190,7 +177,6 @@ namespace Puma.MDE.OPUS
                 "TryUpdateSwapAssetAtMarketplacesAsync",
                 "Unable to update swap asset details right now.");
         }
-
 
         public Task<OpusOperationResult> TryUpdateSwapNominalAsync(string swapId, SwapNominalPatch patch)
         {
@@ -200,7 +186,6 @@ namespace Puma.MDE.OPUS
                 "Unable to update swap nominal right now.");
         }
 
-
         public Task<OpusOperationResult<SwapDeltaFetchResponse>> TryFetchSwapDeltaAsync(SwapDeltaFetchRequest request)
         {
             return ExecuteSafelyAsync(
@@ -208,7 +193,6 @@ namespace Puma.MDE.OPUS
                 "TryFetchSwapDeltaAsync",
                 "Unable to fetch swap delta right now.");
         }
-
 
         public Task<OpusOperationResult<OpusApiResponse<SwapDeltaUpdateResponse>>> TryUpdateSwapDeltaAsync(string swapId, SwapDeltaUpdate deltaUpdate)
         {
@@ -218,7 +202,6 @@ namespace Puma.MDE.OPUS
                 "Unable to update swap delta right now.");
         }
 
-
         public Task<OpusOperationResult<SwapValidationResult>> TryValidateSwapAsync(string swapId, bool requireRecentQuote = true, decimal? minNotional = null)
         {
             return ExecuteSafelyAsync(
@@ -227,7 +210,6 @@ namespace Puma.MDE.OPUS
                 "Unable to validate swap right now.");
         }
 
-
         public Task<OpusOperationResult> TryExecuteAsync_CircuitBreaker()
         {
             return ExecuteSafelyAsync(
@@ -235,6 +217,5 @@ namespace Puma.MDE.OPUS
                 "TryExecuteAsync_CircuitBreaker",
                 "Unable to complete OPUS processing right now.");
         }
-
     }
 }

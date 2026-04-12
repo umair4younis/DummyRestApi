@@ -1,11 +1,9 @@
 ﻿using Puma.MDE.OPUS;
 using Puma.MDE.OPUS.Models;
-using Puma.MDE.OPUS.Utilities;
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 
-namespace Puma.MDE
+namespace Puma.MDE.Test
 {
     partial class Program
     {
@@ -33,8 +31,7 @@ namespace Puma.MDE
                     "}";
         }
 
-
-        internal static List<object[]> BuildDefaultFilteredPortfolioRows()
+                internal static List<object[]> BuildDefaultFilteredPortfolioRows()
         {
             return new List<object[]>
             {
@@ -53,7 +50,6 @@ namespace Puma.MDE
                 new object[] { "UC US INFORMATION TECH NR INDEX", "UCGRUITN Index", 9451.63, "25.18%" }
             };
         }
-
 
         internal static List<ReportHolding> BuildReportHoldings(IEnumerable<object[]> filteredPortfolioRows, string currency, string assetType)
         {
@@ -119,7 +115,6 @@ namespace Puma.MDE
             return holdings;
         }
 
-
         private static string ResolveAssetType(object portfolioRow, string name, string bbgTicker, string defaultAssetType)
         {
             object instrument = GetPropertyValue(portfolioRow, "Instrument");
@@ -152,13 +147,11 @@ namespace Puma.MDE
                 : defaultAssetType;
         }
 
-
         private static T GetPropertyValue<T>(object target, string propertyName)
         {
             object value = GetPropertyValue(target, propertyName);
             return value is T typed ? typed : default(T);
         }
-
 
         private static object GetPropertyValue(object target, string propertyName)
         {
@@ -171,7 +164,6 @@ namespace Puma.MDE
             return property?.GetValue(target, null);
         }
 
-
         internal static Dictionary<string, string> BuildDefaultSwapValues()
         {
             return new Dictionary<string, string>
@@ -182,7 +174,6 @@ namespace Puma.MDE
                 { "Swap Value", "11.9929%" }
             };
         }
-
 
         internal static void ApplySwapValues(IDictionary<string, string> swapValues)
         {
@@ -210,7 +201,6 @@ namespace Puma.MDE
                 }
             }
         }
-
 
         internal static bool TryEncapculateSwapAccountValue(string propertyName, string propertyValue)
         {
@@ -250,6 +240,5 @@ namespace Puma.MDE
                     return false;
             }
         }
-
     }
 }

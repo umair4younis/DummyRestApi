@@ -8,11 +8,11 @@ using Puma.MDE.OPUS.Models;
 using System.Linq;
 using Puma.MDE.OPUS.Utilities;
 
+
 namespace Puma.MDE.OPUS
 {
     public partial class OpusApiClient
     {
-
         /// <summary>
         /// Creates a new quote for a swap in the home marketplace.
         /// </summary>
@@ -40,6 +40,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 var result = JsonSerializerSettingsProvider.Deserialize<OpusApiResponse<AssetQuote>>(body);
+                OpusMessageTrailContext.AddCompletedEndpointSuccess($"POST endpoint call completed successfully ({endpoint}).");
                 return result;
             }).ConfigureAwait(false);
         }
@@ -68,6 +69,7 @@ namespace Puma.MDE.OPUS
                     throw new HttpRequestException(message);
                 }
 
+                OpusMessageTrailContext.AddCompletedEndpointSuccess($"GET endpoint call completed successfully ({endpoint}).");
                 return JsonSerializerSettingsProvider.Deserialize<OpusApiResponse<QuoteGetResource>>(body);
             }).ConfigureAwait(false);
         }
@@ -102,6 +104,7 @@ namespace Puma.MDE.OPUS
                 }
 
                 Engine.Instance.Log.Info($"PATCH swap succeeded for swap {swapId}");
+                OpusMessageTrailContext.AddCompletedEndpointSuccess($"PATCH endpoint call completed successfully ({endpoint}).");
             }).ConfigureAwait(false);
         }
 
@@ -154,6 +157,7 @@ namespace Puma.MDE.OPUS
                 try
                 {
                     var result = JsonSerializerSettingsProvider.Deserialize<OpusApiResponse<SwapDeltaUpdateResponse>>(body);
+                    OpusMessageTrailContext.AddCompletedEndpointSuccess($"PUT endpoint call completed successfully ({endpoint}).");
                     return result ?? new OpusApiResponse<SwapDeltaUpdateResponse> { Resource = new SwapDeltaUpdateResponse { Status = "success" } };
                 }
                 catch (JsonException jex)

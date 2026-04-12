@@ -53,6 +53,7 @@
     <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -164,6 +165,7 @@
     <Compile Include="OPUS\Tests\FakeRetryPolicy.cs" />
     <Compile Include="OPUS\Tests\FakeTokenProvider.cs" />
     <Compile Include="OPUS\Utilities\JsonSerializerSettingsProvider.cs" />
+    <Compile Include="OPUS\Utilities\OpusMessageTrailContext.cs" />
     <Compile Include="OPUS\Utilities\OpisIsoDateTimeConverter.cs" />
     <Compile Include="OPUS\Utilities\PercentageHelper.cs" />
     <Compile Include="OPUS\Utilities\TimeZoneHelper.cs" />

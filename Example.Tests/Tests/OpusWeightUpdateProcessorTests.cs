@@ -1,7 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puma.MDE.OPUS.Models;
 using Puma.MDE.OPUS;
-using System;
 using System.Collections.Generic;
 using Puma.MDE.OPUS.Tests;
 

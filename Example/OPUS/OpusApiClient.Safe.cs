@@ -2,12 +2,13 @@
 using System.Threading.Tasks;
 using System;
 using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS.Utilities;
+
 
 namespace Puma.MDE.OPUS
 {
     public partial class OpusApiClient
     {
-
         private async Task<OpusOperationResult> ExecuteSafelyAsync(Func<Task> operation, string operationName, string friendlyErrorMessage)
         {
             try
@@ -19,10 +20,11 @@ namespace Puma.MDE.OPUS
             {
                 string message = string.IsNullOrWhiteSpace(friendlyErrorMessage) ? DefaultFriendlyErrorMessage : friendlyErrorMessage;
                 Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                return OpusOperationResult.Failure(message, ex.Message);
+                OpusOperationResult failure = OpusOperationResult.Failure(message, ex.Message);
+                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+                return failure;
             }
         }
-
 
         public Task<OpusOperationResult<Tuple<HttpResponseMessage, string>>> TryGetWithResponseAsync(string endpoint)
         {

@@ -1,5 +1,6 @@
 ﻿using Puma.MDE.OPUS.Exceptions;
 using Puma.MDE.OPUS.Models;
+using Puma.MDE.OPUS.Utilities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -136,7 +137,7 @@ namespace Puma.MDE.OPUS
             if (!validationResult.IsValid)
             {
                 Engine.Instance.Log.Error("[FATAL] " + validationResult.ErrorMessage);
-                return string.Empty;
+                throw new InvalidOperationException("Unable to validate the parent OPUS asset composition. Please verify the asset id and try again.");
             }
 
             Engine.Instance.Log.Info(string.Format(
@@ -151,7 +152,7 @@ namespace Puma.MDE.OPUS
             if (validComponents.Count == 0)
             {
                 Engine.Instance.Log.Error("[ERROR] No valid child components found.");
-                return string.Empty;
+                throw new InvalidOperationException("No valid portfolio components were found for OPUS update. Please verify holdings and try again.");
             }
 
             Engine.Instance.Log.Info(string.Format("Found {0} valid components.", validComponents.Count));
@@ -654,23 +655,25 @@ namespace Puma.MDE.OPUS
             {
                 Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Validation error in PATCH: {vex.Message}");
                 Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response body: {vex.ResponseBody}");
-                // Optional: notify user or retry with corrected payload
+                throw;
             }
             catch (ApiRateLimitException rlex)
             {
                 Engine.Instance.Log.Warn($"[SendWeightUpdatePayloadPatchAsync] Rate limited - consider delaying next attempt: {rlex.Message}");
-                // Optional: implement exponential backoff delay here
+                throw;
             }
             catch (ApiRequestException aex)
             {
                 Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] API request failed ({aex.StatusCode}): {aex.Message}");
                 if (!string.IsNullOrEmpty(aex.ResponseBody))
                     Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response details: {aex.ResponseBody}");
+                throw;
             }
             catch (Exception ex)
             {
                 Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Unexpected PATCH error: {ex.Message}");
                 Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Exception: {ex.ToString()}");
+                throw;
             }
         }
 
@@ -878,12 +881,16 @@ namespace Puma.MDE.OPUS
             }
             catch (Exception ex)
             {
-                string fallbackFriendlyMessage = string.IsNullOrWhiteSpace(friendlyErrorMessage)
+                string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+                    ? ex.Message
+                    : string.IsNullOrWhiteSpace(friendlyErrorMessage)
                     ? DefaultFriendlyErrorMessage
                     : friendlyErrorMessage;
 
                 Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                return OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+                OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+                return failure;
             }
         }
 
@@ -895,12 +902,16 @@ namespace Puma.MDE.OPUS
             }
             catch (Exception ex)
             {
-                string fallbackFriendlyMessage = string.IsNullOrWhiteSpace(friendlyErrorMessage)
+                string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+                    ? ex.Message
+                    : string.IsNullOrWhiteSpace(friendlyErrorMessage)
                     ? DefaultFriendlyErrorMessage
                     : friendlyErrorMessage;
 
                 Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                return OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+                OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+                return failure;
             }
         }
 

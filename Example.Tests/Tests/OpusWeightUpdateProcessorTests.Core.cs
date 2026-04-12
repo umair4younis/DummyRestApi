@@ -5,10 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Net.Http;
-using Newtonsoft.Json;
 using System.Linq;
 using static Puma.MDE.OPUS.OpusCircuitBreaker;
-using Puma.MDE.OPUS.Tests;
 
 namespace Puma.MDE.Tests
 {
