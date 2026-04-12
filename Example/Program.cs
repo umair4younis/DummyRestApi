@@ -92,10 +92,11 @@ namespace Puma.MDE.Test
 
         internal static void SetLastUserFriendlyMessages(IEnumerable<string> messages)
         {
-            LastUserFriendlyMessages = (messages ?? Enumerable.Empty<string>())
+            var cleaned = (messages ?? Enumerable.Empty<string>())
                 .Where(m => !string.IsNullOrWhiteSpace(m))
                 .Select(m => m.Trim())
                 .ToList();
+            LastUserFriendlyMessages = DeduplicateMessages(cleaned);
 
             LastUserFriendlyMessage = FormatUserFriendlyMessages(LastUserFriendlyMessages);
         }
@@ -112,10 +113,10 @@ namespace Puma.MDE.Test
 
         private static List<string> NormalizeFailureMessageOrdering(IEnumerable<string> messages)
         {
-            var ordered = (messages ?? Enumerable.Empty<string>())
+            var ordered = DeduplicateMessages((messages ?? Enumerable.Empty<string>())
                 .Where(m => !string.IsNullOrWhiteSpace(m))
                 .Select(m => m.Trim())
-                .ToList();
+                .ToList());
 
             bool IsSuccessLike(string message)
             {
@@ -148,6 +149,22 @@ namespace Puma.MDE.Test
             return successLike;
         }
 
+        private static List<string> DeduplicateMessages(List<string> messages)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var deduplicated = new List<string>();
+
+            foreach (var message in messages)
+            {
+                if (seen.Add(message))
+                {
+                    deduplicated.Add(message);
+                }
+            }
+
+            return deduplicated;
+        }
+
         private static void ShowUserFriendlyMessageBox()
         {
             if (string.IsNullOrWhiteSpace(LastUserFriendlyMessage))
@@ -155,6 +172,7 @@ namespace Puma.MDE.Test
                 return;
             }
 
+            Engine.Instance.Log.Info(LastUserFriendlyMessage);
             MessageBox.Show(
                 LastUserFriendlyMessage,
                 "OPUS Update Status",
