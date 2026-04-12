@@ -159,7 +159,7 @@ namespace Puma.MDE.Test
                 LastUserFriendlyMessage,
                 "OPUS Update Status",
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                MessageBoxIcon.Exclamation);
         }
     }
 }

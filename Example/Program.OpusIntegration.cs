@@ -77,13 +77,9 @@ namespace Puma.MDE.Test
 
                 OpusGraphQLClient opusGraphQLClient = new OpusGraphQLClient(opusHttpClientHandler, opusTokenProvider, opusConfiguration);
                 Engine.Instance.Log.Info(opusGraphQLClient);
-                Console.WriteLine("Result of the call to OPUS Graph QL");
-                Console.WriteLine(opusGraphQLClient);
 
                 OpusApiClient opusApiClient = new OpusApiClient(opusHttpClientHandler, opusTokenProvider, opusConfiguration);
                 Engine.Instance.Log.Info(opusApiClient);
-                Console.WriteLine("Result of the call to OPUS API");
-                Console.WriteLine(opusApiClient);
 
                 OpusWeightUpdateProcessor.ParentAssetId = opusAssetCompositionId;
                 Engine.Instance.Log.Info(OpusWeightUpdateProcessor.ParentAssetId);
@@ -114,7 +110,6 @@ namespace Puma.MDE.Test
                         return missingSwapResult;
                     }
 
-                    swapId = "019d2001-e11b-7000-a211-8c654386b53d";
                     var quote = new AssetQuote
                     {
                         ClosingQuoteOfDay = false,
