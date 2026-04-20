@@ -22,6 +22,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -31,6 +32,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.VisualStudio.QualityTools.UnitTestFramework, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
@@ -49,6 +51,11 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>DLL\NLog.dll</HintPath>
     </Reference>
+    <Reference Include="SR2COM, Version=1.5.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+      <HintPath>DLL\SR2COM.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.Configuration" />
@@ -60,9 +67,256 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
+    <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AppSettings.cs" />
+    <Compile Include="Common\Audit.cs" />
+    <Compile Include="Common\Configuration\IConfig.cs" />
+    <Compile Include="Common\DataBase\DataAccessBase.cs" />
+    <Compile Include="Common\Entity.cs" />
+    <Compile Include="Common\EntityStatus.cs" />
+    <Compile Include="Common\Extension\ObservableCollection.cs" />
+    <Compile Include="Common\Pricing\IPricer.cs" />
+    <Compile Include="Common\Pricing\PricingCLBSRVEuropean\EuropeanPricer.cs" />
+    <Compile Include="Common\Pricing\PricingMCLVAmerican\AmericanPricer.cs" />
+    <Compile Include="Common\PumaMDEException.cs" />
+    <Compile Include="Common\SwapAccountPricing\PortfolioPricer.cs" />
+    <Compile Include="Common\SwapAccountPricing\Price.cs" />
+    <Compile Include="Common\SwapAccountPricing\Provider\IPriceProvider.cs" />
+    <Compile Include="Common\SwapAccountPricing\Provider\KxOptionProvider.cs" />
+    <Compile Include="Common\SwapAccountPricing\Provider\KxProvider.cs" />
+    <Compile Include="Common\SwapAccountPricing\Provider\SophisAPIProvider.cs" />
+    <Compile Include="Common\SwapAccountPricing\Provider\SophisPrecalcProvider.cs" />
+    <Compile Include="Common\Utilities\CompareUtil.cs" />
+    <Compile Include="Common\Utilities\CSVReader.cs" />
+    <Compile Include="Common\Utilities\Expressions.cs" />
+    <Compile Include="Common\Utilities\Momento.cs" />
+    <Compile Include="Common\Utilities\Object.cs" />
+    <Compile Include="Common\Utilities\PropertyValueChange.cs" />
+    <Compile Include="Common\Utilities\ReactiveEx.cs" />
+    <Compile Include="Common\Utilities\Reflection.cs" />
+    <Compile Include="Common\Utilities\SimpleTypes.cs" />
+    <Compile Include="Common\Utilities\Threading.cs" />
+    <Compile Include="Common\Utilities\WorkingDays.cs" />
+    <Compile Include="Common\ViewModel\ViewModelBase.cs" />
+    <Compile Include="Data\AdjustmentData.cs" />
+    <Compile Include="Data\AiAlgorithm.cs" />
+    <Compile Include="Data\AiAlgorithmLink.cs" />
+    <Compile Include="Data\AiGeneration.cs" />
+    <Compile Include="Data\AiSignal.cs" />
+    <Compile Include="Data\AiSubscriber.cs" />
+    <Compile Include="Data\AiWeight.cs" />
+    <Compile Include="Data\ArbitrageCounterparty.cs" />
+    <Compile Include="Data\AutoATMChange.cs" />
+    <Compile Include="Data\AutoATMThreshold.cs" />
+    <Compile Include="Data\AutoFoRcoThreshold.cs" />
+    <Compile Include="Data\AutoFwdThreshold.cs" />
+    <Compile Include="Data\AutoRcoIssue.cs" />
+    <Compile Include="Data\AutoRepoChange.cs" />
+    <Compile Include="Data\AutoRepoThreshold.cs" />
+    <Compile Include="Data\AutoYCChange.cs" />
+    <Compile Include="Data\AutoYCThreshold.cs" />
+    <Compile Include="Data\AutoYCThreshold_MXG.cs" />
+    <Compile Include="Data\Basis.cs" />
+    <Compile Include="Data\BasketFixingConfiguration.cs" />
+    <Compile Include="Data\BenchmarkLink.cs" />
+    <Compile Include="Data\BucketedEpsilonRecord.cs" />
+    <Compile Include="Data\BucketedVegaRecord.cs" />
+    <Compile Include="Data\Calendar.cs" />
+    <Compile Include="Data\CalypsoCalendar.cs" />
+    <Compile Include="Data\CentralFixingsMonitor.cs" />
+    <Compile Include="Data\Classification.cs" />
+    <Compile Include="Data\ClassificationHierarchie.cs" />
+    <Compile Include="Data\CommodityVolatility.cs" />
+    <Compile Include="Data\CommodityVolatilityData.cs" />
+    <Compile Include="Data\Composition.cs" />
+    <Compile Include="Data\CorporateAction.cs" />
+    <Compile Include="Data\CorporateActionData.cs" />
+    <Compile Include="Data\CorporateActionExecution.cs" />
+    <Compile Include="Data\CouponsToolExecution.cs" />
+    <Compile Include="Data\CubicSplineParam.cs" />
+    <Compile Include="Data\DataFactory.cs" />
+    <Compile Include="Data\DefaultCutoff.cs" />
+    <Compile Include="Data\DependencyAnalyzerData.cs" />
+    <Compile Include="Data\DivPublishDestination.cs" />
+    <Compile Include="Data\EarningDate.cs" />
+    <Compile Include="Data\EQBrainMMNAlert.cs" />
+    <Compile Include="Data\EQBrainQuotationChange.cs" />
+    <Compile Include="Data\EQBrainSetting.cs" />
+    <Compile Include="Data\ETradingPlatform.cs" />
+    <Compile Include="Data\EuwaxBonus.cs" />
+    <Compile Include="Data\EuwaxDiscount.cs" />
+    <Compile Include="Data\EuwaxIssuer.cs" />
+    <Compile Include="Data\EuwaxKnockout.cs" />
+    <Compile Include="Data\EuwaxReverseConvertible.cs" />
+    <Compile Include="Data\EuwaxUnderlying.cs" />
+    <Compile Include="Data\EuwaxWarrant.cs" />
+    <Compile Include="Data\Extrapolation.cs" />
+    <Compile Include="Data\ExtrapolationModel.cs" />
+    <Compile Include="Data\ExtrapolationModelParameter.cs" />
+    <Compile Include="Data\ExtrapolationSlice.cs" />
+    <Compile Include="Data\ExtrapolationValue.cs" />
+    <Compile Include="Data\ForwardMonitor.cs" />
+    <Compile Include="Data\ForwardTolerance.cs" />
+    <Compile Include="Data\GlobalSettings.cs" />
+    <Compile Include="Data\HistoricAmendment.cs" />
+    <Compile Include="Data\HVBCurrencyTable.cs" />
+    <Compile Include="Data\HVBMassAuditChangeID.cs" />
+    <Compile Include="Data\HVBMassAuditShiftClass.cs" />
+    <Compile Include="Data\HVBMassAxeList.cs" />
+    <Compile Include="Data\HVBMassBarrierShiftClass.cs" />
+    <Compile Include="Data\HVBMassClients.cs" />
+    <Compile Include="Data\HVBMassCorrsqueeze.cs" />
+    <Compile Include="Data\HVBMassDividendCap.cs" />
+    <Compile Include="Data\HVBMassEpsilonShift.cs" />
+    <Compile Include="Data\HVBMassFundingBucket.cs" />
+    <Compile Include="Data\HVBMassInterpolationWindow.cs" />
+    <Compile Include="Data\HVBMassMarkupNotionalFactors.cs" />
+    <Compile Include="Data\HVBMassMarkupPayoffFactors.cs" />
+    <Compile Include="Data\HVBMassMarkups.cs" />
+    <Compile Include="Data\HVBMassMUMarkups.cs" />
+    <Compile Include="Data\HVBMassMUParameters.cs" />
+    <Compile Include="Data\HVBMassQuantoCorrShifts.cs" />
+    <Compile Include="Data\HVBMassQuoteImprovement.cs" />
+    <Compile Include="Data\HVBMassQuoteParameters.cs" />
+    <Compile Include="Data\HVBMassSalesNationalFactor.cs" />
+    <Compile Include="Data\HVBMassSalesParameters.cs" />
+    <Compile Include="Data\HVBMassShiftClass.cs" />
+    <Compile Include="Data\HVBMassSkewShifts.cs" />
+    <Compile Include="Data\HVBMassTimeInterval.cs" />
+    <Compile Include="Data\HVBMassTimeIntervalNDependency.cs" />
+    <Compile Include="Data\HVBMassUnderlyingShift.cs" />
+    <Compile Include="Data\HVBMassUnderShiftClass.cs" />
+    <Compile Include="Data\HVBSingleUnderlyingShiftClass.cs" />
+    <Compile Include="Data\HVBTempSingleUnderlying.cs" />
+    <Compile Include="Data\HVBTitresUnderShiftClass.cs" />
+    <Compile Include="Data\HVBUnderlyingMapping.cs" />
+    <Compile Include="Data\HVBUnderlyingMCTable.cs" />
+    <Compile Include="Data\HVBUnderlyingShiftClasses.cs" />
+    <Compile Include="Data\HVBUnderlyingTypes.cs" />
+    <Compile Include="Data\HVBUnderlyingTypeUnderShiftClass.cs" />
+    <Compile Include="Data\IMonitor.cs" />
+    <Compile Include="Data\IndexCompositionPublishDestination.cs" />
+    <Compile Include="Data\IpvTolerance.cs" />
+    <Compile Include="Data\IssuanceParameter.cs" />
+    <Compile Include="Data\KxSupply.cs" />
+    <Compile Include="Data\LeveragedBarrierUnderlying.cs" />
+    <Compile Include="Data\MaturitySchedule.cs" />
+    <Compile Include="Data\MDEPriceCollar.cs" />
+    <Compile Include="Data\MDESettingsMapping.cs" />
+    <Compile Include="Data\MDESmartMarkupAlgo.cs" />
+    <Compile Include="Data\MDETradeableTimes.cs" />
+    <Compile Include="Data\MDEVolaCommodity.cs" />
+    <Compile Include="Data\myRoboGlobalSettings.cs" />
+    <Compile Include="Data\myRoboMarkupComplexityFactors.cs" />
+    <Compile Include="Data\myRoboMarkupVolumeFactors.cs" />
+    <Compile Include="Data\OrcBidOnly.cs" />
+    <Compile Include="Data\PddaMonitor.cs" />
+    <Compile Include="Data\PermissionType.cs" />
+    <Compile Include="Data\PlannedAction.cs" />
+    <Compile Include="Data\PreAfterMarketAdjustmentMonitor.cs" />
+    <Compile Include="Data\ProductDescription.cs" />
+    <Compile Include="Data\PublishDestination.cs" />
+    <Compile Include="Data\PublishingSchedule.cs" />
+    <Compile Include="Data\PumaETGlobalSettings.cs" />
+    <Compile Include="Data\PumaMDEMassCustParameters.cs" />
+    <Compile Include="Data\PumaMDEMassCustUsers.cs" />
+    <Compile Include="Data\QuantoFee.cs" />
+    <Compile Include="Data\QuixBenchmarkMonitor.cs" />
+    <Compile Include="Data\QuixComponent.cs" />
+    <Compile Include="Data\QuixComposition.cs" />
+    <Compile Include="Data\QuixCompositionCentralFixingMonitor.cs" />
+    <Compile Include="Data\QuixCompositions.cs" />
+    <Compile Include="Data\QuixReweight.cs" />
+    <Compile Include="Data\QuixReweightModel.cs" />
+    <Compile Include="Data\QuoteFilterRule.cs" />
+    <Compile Include="Data\QuoteFilterType.cs" />
+    <Compile Include="Data\RepoPublishDestination.cs" />
+    <Compile Include="Data\SettingsSetRule.cs" />
+    <Compile Include="Data\SettingsSetType.cs" />
+    <Compile Include="Data\SophisComponent.cs" />
+    <Compile Include="Data\SophisComposition.cs" />
+    <Compile Include="Data\Statistic.cs" />
+    <Compile Include="Data\SwapAccount.cs" />
+    <Compile Include="Data\SwapAccountCrossRuleRow.cs" />
+    <Compile Include="Data\SwapAccountCrossWeight.cs" />
+    <Compile Include="Data\SwapAccountHistory.cs" />
+    <Compile Include="Data\SwapAccountHolidayCalendar.cs" />
+    <Compile Include="Data\SwapAccountInstrument.cs" />
+    <Compile Include="Data\SwapAccountInstrumentType.cs" />
+    <Compile Include="Data\SwapAccountPortfolio.cs" />
+    <Compile Include="Data\SwapAccountPremium.cs" />
+    <Compile Include="Data\SwapAccountPremiumFee.cs" />
+    <Compile Include="Data\SwapAccountReport.cs" />
+    <Compile Include="Data\SwapAccountRuleRow.cs" />
+    <Compile Include="Data\SwapAccountStepInDividend.cs" />
+    <Compile Include="Data\SwapAccountWeightRow.cs" />
+    <Compile Include="Data\SwapAlertColorPalette.cs" />
+    <Compile Include="Data\SwapCollateralCheckRow.cs" />
+    <Compile Include="Data\SwapCountry.cs" />
+    <Compile Include="Data\SwapDbInfo.cs" />
+    <Compile Include="Data\SwapDividendRow.cs" />
+    <Compile Include="Data\SwapEvent.cs" />
+    <Compile Include="Data\SwapExecutionFeeRow.cs" />
+    <Compile Include="Data\SwapFloaterHistoryRow.cs" />
+    <Compile Include="Data\SwapHelperClasses.cs" />
+    <Compile Include="Data\SwapInstrumentIdentifier.cs" />
+    <Compile Include="Data\SwapInvestmentUniverseRow.cs" />
+    <Compile Include="Data\SwapManagementFees.cs" />
+    <Compile Include="Data\SwapManualFX.cs" />
+    <Compile Include="Data\SwapMovement.cs" />
+    <Compile Include="Data\SwapOrder.cs" />
+    <Compile Include="Data\SwapPool.cs" />
+    <Compile Include="Data\SwapPreference.cs" />
+    <Compile Include="Data\SwapPriceRule.cs" />
+    <Compile Include="Data\SwapRawOrder.cs" />
+    <Compile Include="Data\SwapRegion.cs" />
+    <Compile Include="Data\SwapSnapshots.cs" />
+    <Compile Include="Data\SwapSophisPortfolioRow.cs" />
+    <Compile Include="Data\SwapStepInFixing.cs" />
+    <Compile Include="Data\SwapStopLossKindRow.cs" />
+    <Compile Include="Data\SwapStopLossRow.cs" />
+    <Compile Include="Data\SwapTaxRow.cs" />
+    <Compile Include="Data\SwapTippAssetClass.cs" />
+    <Compile Include="Data\SwapTippClasses.cs" />
+    <Compile Include="Data\SwapTippShareRow.cs" />
+    <Compile Include="Data\SwapTrade.cs" />
+    <Compile Include="Data\SwapTypes.cs" />
+    <Compile Include="Data\SwapUploadSPIRow.cs" />
+    <Compile Include="Data\SwapUser.cs" />
+    <Compile Include="Data\Titres.cs" />
+    <Compile Include="Data\TradeAnalysis.cs" />
+    <Compile Include="Data\TradingIndex.cs" />
+    <Compile Include="Data\UnderlyingClassification.cs" />
+    <Compile Include="Data\UnderlyingETradingPlatformApproval.cs" />
+    <Compile Include="Data\UnderlyingLastUpdate.cs" />
+    <Compile Include="Data\UnderlyingSubscript.cs" />
+    <Compile Include="Data\Underyling.cs" />
+    <Compile Include="Data\UniConfig.cs" />
+    <Compile Include="Data\UsedMarketdata.cs" />
+    <Compile Include="Data\UsedMarketdataValue.cs" />
+    <Compile Include="Data\User.cs" />
+    <Compile Include="Data\UserGroup.cs" />
+    <Compile Include="Data\UserGroupConnection.cs" />
+    <Compile Include="Data\UserRight.cs" />
+    <Compile Include="Data\VarSwapParameters.cs" />
+    <Compile Include="Data\VegaBucket.cs" />
+    <Compile Include="Data\VegaStrikeWeights.cs" />
+    <Compile Include="Data\VolatilityData.cs" />
+    <Compile Include="Data\VolatilityDataAtmMode.cs" />
+    <Compile Include="Data\VolatilityDataSmileMode.cs" />
+    <Compile Include="Data\VolMonitor.cs" />
+    <Compile Include="Data\Volsurface.cs" />
+    <Compile Include="Data\VolsurfaceModel.cs" />
+    <Compile Include="Data\VolsurfaceModelParameter.cs" />
+    <Compile Include="Data\VolsurfaceSlice.cs" />
+    <Compile Include="Data\VolsurfaceValue.cs" />
+    <Compile Include="Data\YieldCurve.cs" />
+    <Compile Include="Data\YieldCurveMonitor.cs" />
+    <Compile Include="Data\YieldCurveMonitorChild.cs" />
+    <Compile Include="Data\YieldCurveMonitorNotification.cs" />
+    <Compile Include="Data\YieldCurveValue.cs" />
     <Compile Include="Engine.cs" />
     <Compile Include="Engine.Runtime.cs" />
     <Compile Include="Engine.Logging.cs" />
@@ -173,9 +427,14 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Program.DataPrep.cs" />
     <Compile Include="Program.OpusIntegration.cs" />
+    <Compile Include="Quotation\Processing.cs" />
+    <Compile Include="VolsurfaceModelling\IVolsurfaceModel.cs" />
+    <Compile Include="VolsurfaceModelling\VolsurfaceModel.cs" />
+    <Compile Include="VolsurfaceProcessing\Processor.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <Content Include="DLL\SR2COM.dll" />
     <Content Include="OPUS\Cert\api.pfx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

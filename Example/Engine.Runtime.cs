@@ -4,17 +4,6 @@ namespace Puma.MDE
 {
     public sealed partial class Engine
     {
-        public string GetHistomvtsName()
-        {
-#if SOPHIS_7
-            return "JOIN_POSITION_HISTOMVTS";
-#else
-            return "HISTOMVTS";
-#endif
-        }
-
-        public DateTime Today { get; set; }
-
         static System.Reflection.Assembly MyResolveEventHandler(object sender, ResolveEventArgs args)
         {
             System.Reflection.Assembly a = null;

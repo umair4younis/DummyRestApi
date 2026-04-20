@@ -1,10 +1,13 @@
-﻿using System;
+﻿using Puma.MDE.Data;
+using System;
 using System.Runtime.InteropServices;
 
 namespace Puma.MDE
 {
     public sealed partial class Engine
     {
+        public User ConnectedUser { get; internal set; }
+
         public void InfoException(string message, Exception ex)
         {
             Log.Info(ex, message);
