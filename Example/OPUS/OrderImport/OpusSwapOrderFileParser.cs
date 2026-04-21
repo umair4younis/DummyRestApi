@@ -1,12 +1,15 @@
-﻿using ExcelDataReader;
-using Puma.MDE.Common.Utilities;
+﻿using Puma.MDE.Common.Utilities;
 using Puma.MDE.Data;
 using System;
 using System.Collections.Generic;
+using System.Data;
+using System.Data.OleDb;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Xml.Linq;
 
 
 namespace Puma.MDE.OPUS.OrderImport
@@ -51,8 +54,9 @@ namespace Puma.MDE.OPUS.OrderImport
                 case ".csv":
                     return ReadCsv(fileContent, configuration);
                 case ".xls":
+                    return ReadLegacyWorkbookWithOleDb(fileContent, ".xls", configuration);
                 case ".xlsx":
-                    return ReadWorkbook(fileContent, configuration);
+                    return ReadXlsx(fileContent, configuration);
                 default:
                     throw new NotSupportedException("Unsupported OPUS order file extension '" + extension + "'.");
             }
@@ -76,42 +80,306 @@ namespace Puma.MDE.OPUS.OrderImport
             return BuildTabularData(rows, configuration);
         }
 
-        private static TabularOrderData ReadWorkbook(byte[] fileContent, OpusSftpOrderImportConfiguration configuration)
+        private static TabularOrderData ReadXlsx(byte[] fileContent, OpusSftpOrderImportConfiguration configuration)
         {
             List<IList<string>> rows = new List<IList<string>>();
 
             using (MemoryStream memoryStream = new MemoryStream(fileContent))
-            using (IExcelDataReader reader = ExcelReaderFactory.CreateReader(memoryStream))
+            using (ZipArchive archive = new ZipArchive(memoryStream, ZipArchiveMode.Read, true))
             {
-                bool foundRequestedSheet = string.IsNullOrWhiteSpace(configuration.SheetName);
-                do
-                {
-                    if (!string.IsNullOrWhiteSpace(configuration.SheetName) && !string.Equals(reader.Name, configuration.SheetName, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    foundRequestedSheet = true;
-                    while (reader.Read())
-                    {
-                        List<string> row = new List<string>();
-                        for (int index = 0; index < reader.FieldCount; index++)
-                        {
-                            row.Add(ConvertCellToString(reader.GetValue(index)));
-                        }
-
-                        rows.Add(row);
-                    }
-
-                    break;
-                }
-                while (reader.NextResult());
-
-                if (!foundRequestedSheet)
-                    throw new InvalidOperationException("The configured worksheet '" + configuration.SheetName + "' was not found in the OPUS order file.");
+                List<string> sharedStrings = ReadSharedStrings(archive);
+                Dictionary<string, string> rels = ReadWorkbookRelationships(archive);
+                string sheetPartPath = ResolveWorksheetPartPath(archive, rels, configuration.SheetName);
+                rows = ReadWorksheetRows(archive, sheetPartPath, sharedStrings);
             }
 
             Engine.Instance.Log.Debug("[OpusSwapOrderFileParser] Workbook rows read: " + rows.Count);
 
             return BuildTabularData(rows, configuration);
+        }
+
+        private static TabularOrderData ReadLegacyWorkbookWithOleDb(byte[] fileContent, string extension, OpusSftpOrderImportConfiguration configuration)
+        {
+            string tempFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + extension);
+            try
+            {
+                File.WriteAllBytes(tempFilePath, fileContent);
+
+                string connectionString = extension.Equals(".xls", StringComparison.OrdinalIgnoreCase)
+                    ? string.Format("Provider=Microsoft.Jet.OLEDB.4.0;Data Source={0};Extended Properties=\"Excel 8.0;HDR=NO;IMEX=1\";", tempFilePath)
+                    : string.Format("Provider=Microsoft.ACE.OLEDB.12.0;Data Source={0};Extended Properties=\"Excel 12.0 Xml;HDR=NO;IMEX=1\";", tempFilePath);
+
+                List<IList<string>> rows = new List<IList<string>>();
+                using (OleDbConnection connection = new OleDbConnection(connectionString))
+                {
+                    connection.Open();
+                    DataTable sheets = connection.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, null);
+                    if (sheets == null || sheets.Rows.Count == 0)
+                        throw new InvalidOperationException("No worksheets were found in the OPUS order file.");
+
+                    string selectedSheet = FindSheetName(sheets, configuration.SheetName);
+                    if (string.IsNullOrWhiteSpace(selectedSheet))
+                        throw new InvalidOperationException("The configured worksheet '" + configuration.SheetName + "' was not found in the OPUS order file.");
+
+                    using (OleDbCommand command = new OleDbCommand("SELECT * FROM [" + selectedSheet + "]", connection))
+                    using (OleDbDataReader reader = command.ExecuteReader())
+                    {
+                        if (reader != null)
+                        {
+                            while (reader.Read())
+                            {
+                                List<string> row = new List<string>();
+                                for (int columnIndex = 0; columnIndex < reader.FieldCount; columnIndex++)
+                                {
+                                    row.Add(ConvertCellToString(reader.GetValue(columnIndex)));
+                                }
+
+                                rows.Add(row);
+                            }
+                        }
+                    }
+                }
+
+                Engine.Instance.Log.Debug("[OpusSwapOrderFileParser] Legacy workbook rows read (OLE DB): " + rows.Count);
+                return BuildTabularData(rows, configuration);
+            }
+            catch (OleDbException ex)
+            {
+                throw new InvalidOperationException(
+                    "Failed to parse Excel .xls file without NuGet dependencies. Ensure Microsoft Access Database Engine is installed.",
+                    ex);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempFilePath))
+                        File.Delete(tempFilePath);
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static string FindSheetName(DataTable sheets, string configuredSheetName)
+        {
+            string defaultSheetName = null;
+            foreach (DataRow sheetRow in sheets.Rows)
+            {
+                string tableName = Convert.ToString(sheetRow["TABLE_NAME"], CultureInfo.InvariantCulture);
+                if (string.IsNullOrWhiteSpace(tableName))
+                    continue;
+
+                if (defaultSheetName == null && tableName.EndsWith("$", StringComparison.OrdinalIgnoreCase))
+                    defaultSheetName = tableName;
+
+                if (string.IsNullOrWhiteSpace(configuredSheetName))
+                    continue;
+
+                string normalized = tableName.Trim('\'', '"');
+                string expected = configuredSheetName.EndsWith("$", StringComparison.Ordinal) ? configuredSheetName : configuredSheetName + "$";
+                if (normalized.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                    return tableName;
+            }
+
+            return string.IsNullOrWhiteSpace(configuredSheetName) ? defaultSheetName : null;
+        }
+
+        private static List<string> ReadSharedStrings(ZipArchive archive)
+        {
+            ZipArchiveEntry entry = archive.GetEntry("xl/sharedStrings.xml");
+            List<string> values = new List<string>();
+            if (entry == null)
+                return values;
+
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            using (Stream stream = entry.Open())
+            {
+                XDocument document = XDocument.Load(stream);
+                IEnumerable<XElement> stringItems = document.Root == null
+                    ? Enumerable.Empty<XElement>()
+                    : document.Root.Elements(ns + "si");
+
+                foreach (XElement si in stringItems)
+                {
+                    string value = string.Concat(si.Descendants(ns + "t").Select(t => t.Value));
+                    values.Add(value ?? string.Empty);
+                }
+            }
+
+            return values;
+        }
+
+        private static Dictionary<string, string> ReadWorkbookRelationships(ZipArchive archive)
+        {
+            Dictionary<string, string> rels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ZipArchiveEntry relsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels");
+            if (relsEntry == null)
+                return rels;
+
+            XNamespace relNs = "http://schemas.openxmlformats.org/package/2006/relationships";
+            using (Stream stream = relsEntry.Open())
+            {
+                XDocument document = XDocument.Load(stream);
+                if (document.Root == null)
+                    return rels;
+
+                foreach (XElement relationship in document.Root.Elements(relNs + "Relationship"))
+                {
+                    XAttribute idAttr = relationship.Attribute("Id");
+                    XAttribute targetAttr = relationship.Attribute("Target");
+                    if (idAttr == null || targetAttr == null)
+                        continue;
+
+                    rels[idAttr.Value] = targetAttr.Value;
+                }
+            }
+
+            return rels;
+        }
+
+        private static string ResolveWorksheetPartPath(ZipArchive archive, IDictionary<string, string> rels, string configuredSheetName)
+        {
+            ZipArchiveEntry workbookEntry = archive.GetEntry("xl/workbook.xml");
+            if (workbookEntry == null)
+                throw new InvalidOperationException("The OPUS .xlsx file is missing xl/workbook.xml.");
+
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            XNamespace relNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+            using (Stream stream = workbookEntry.Open())
+            {
+                XDocument workbook = XDocument.Load(stream);
+                XElement sheets = workbook.Root == null ? null : workbook.Root.Element(ns + "sheets");
+                if (sheets == null)
+                    throw new InvalidOperationException("The OPUS .xlsx file does not contain any worksheets.");
+
+                XElement selectedSheet = null;
+                foreach (XElement sheet in sheets.Elements(ns + "sheet"))
+                {
+                    string name = (string)sheet.Attribute("name");
+                    if (selectedSheet == null)
+                        selectedSheet = sheet;
+
+                    if (!string.IsNullOrWhiteSpace(configuredSheetName)
+                        && string.Equals(name, configuredSheetName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedSheet = sheet;
+                        break;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(configuredSheetName))
+                {
+                    string selectedName = (string)(selectedSheet == null ? null : selectedSheet.Attribute("name"));
+                    if (!string.Equals(selectedName, configuredSheetName, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("The configured worksheet '" + configuredSheetName + "' was not found in the OPUS order file.");
+                }
+
+                if (selectedSheet == null)
+                    throw new InvalidOperationException("No worksheet could be selected from the OPUS .xlsx file.");
+
+                string relId = (string)selectedSheet.Attribute(relNs + "id");
+                if (string.IsNullOrWhiteSpace(relId) || !rels.ContainsKey(relId))
+                    throw new InvalidOperationException("Worksheet relationship could not be resolved in the OPUS .xlsx file.");
+
+                string target = rels[relId].Replace('\\', '/').TrimStart('/');
+                if (!target.StartsWith("xl/", StringComparison.OrdinalIgnoreCase))
+                    target = "xl/" + target;
+
+                if (archive.GetEntry(target) == null)
+                    throw new InvalidOperationException("Worksheet XML part was not found: " + target);
+
+                return target;
+            }
+        }
+
+        private static List<IList<string>> ReadWorksheetRows(ZipArchive archive, string sheetPartPath, IList<string> sharedStrings)
+        {
+            ZipArchiveEntry sheetEntry = archive.GetEntry(sheetPartPath);
+            if (sheetEntry == null)
+                throw new InvalidOperationException("Worksheet XML part was not found: " + sheetPartPath);
+
+            XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+            List<IList<string>> rows = new List<IList<string>>();
+
+            using (Stream stream = sheetEntry.Open())
+            {
+                XDocument document = XDocument.Load(stream);
+                IEnumerable<XElement> rowElements = document.Descendants(ns + "row");
+                foreach (XElement rowElement in rowElements)
+                {
+                    List<string> rowValues = new List<string>();
+                    foreach (XElement cell in rowElement.Elements(ns + "c"))
+                    {
+                        string reference = (string)cell.Attribute("r");
+                        int columnIndex = GetCellColumnIndex(reference);
+                        while (rowValues.Count <= columnIndex)
+                            rowValues.Add(string.Empty);
+
+                        rowValues[columnIndex] = ReadCellValue(cell, ns, sharedStrings);
+                    }
+
+                    rows.Add(rowValues);
+                }
+            }
+
+            return rows;
+        }
+
+        private static int GetCellColumnIndex(string cellReference)
+        {
+            if (string.IsNullOrWhiteSpace(cellReference))
+                return 0;
+
+            int index = 0;
+            for (int i = 0; i < cellReference.Length; i++)
+            {
+                char character = cellReference[i];
+                if (!char.IsLetter(character))
+                    break;
+
+                index = (index * 26) + (char.ToUpperInvariant(character) - 'A' + 1);
+            }
+
+            return Math.Max(0, index - 1);
+        }
+
+        private static string ReadCellValue(XElement cell, XNamespace ns, IList<string> sharedStrings)
+        {
+            string type = (string)cell.Attribute("t");
+
+            if (string.Equals(type, "inlineStr", StringComparison.OrdinalIgnoreCase))
+            {
+                XElement inline = cell.Element(ns + "is");
+                if (inline == null)
+                    return string.Empty;
+
+                return string.Concat(inline.Descendants(ns + "t").Select(t => t.Value));
+            }
+
+            string rawValue = (string)cell.Element(ns + "v");
+            if (string.IsNullOrWhiteSpace(rawValue))
+                return string.Empty;
+
+            if (string.Equals(type, "s", StringComparison.OrdinalIgnoreCase))
+            {
+                int sharedStringIndex;
+                if (int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out sharedStringIndex)
+                    && sharedStringIndex >= 0
+                    && sharedStringIndex < sharedStrings.Count)
+                {
+                    return sharedStrings[sharedStringIndex] ?? string.Empty;
+                }
+
+                return string.Empty;
+            }
+
+            if (string.Equals(type, "b", StringComparison.OrdinalIgnoreCase))
+                return rawValue == "1" ? "true" : "false";
+
+            return rawValue;
         }
 
         private static TabularOrderData BuildTabularData(IList<IList<string>> rawRows, OpusSftpOrderImportConfiguration configuration)

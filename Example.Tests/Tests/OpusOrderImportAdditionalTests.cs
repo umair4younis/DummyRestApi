@@ -7,6 +7,7 @@ using Puma.MDE.SwapUtils;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.IO;
 using System.Text;
 
 
@@ -145,6 +146,92 @@ namespace Puma.MDE.Tests
             Assert.AreEqual("ACC-DEF", fullUnwind.AccountName);
             Assert.AreEqual(TypeManastOrder.Transaction, fullUnwind.Type);
             Assert.AreEqual(TypeManastUpdatePoolUpon.eDoNotUpdate, fullUnwind.UpdatePoolUpon);
+        }
+
+        [TestMethod]
+        public void SftpCompatibilityValidation_Requires_Private_Key()
+        {
+            OpusSftpOrderImportConfiguration configuration = new OpusSftpOrderImportConfiguration
+            {
+                Host = "localhost",
+                Port = 22,
+                Username = "opus",
+                Password = "secret",
+                RemoteDirectory = "/orders"
+            };
+
+            ConfigurationErrorsException ex = AssertCompat.Throws<ConfigurationErrorsException>(() =>
+                OpusSftpOrderFileDownloader.ValidateStartupCompatibility(configuration));
+
+            StringAssert.Contains(ex.Message, "Opus.Sftp.PrivateKeyPath");
+        }
+
+        [TestMethod]
+        public void SftpCompatibilityValidation_Requires_Sftp_Executable()
+        {
+            OpusSftpOrderImportConfiguration configuration = new OpusSftpOrderImportConfiguration
+            {
+                Host = "localhost",
+                Port = 22,
+                Username = "opus",
+                PrivateKeyPath = CreateTemporaryFile("dummy-key"),
+                RemoteDirectory = "/orders"
+            };
+
+            Func<string> originalResolver = OpusSftpOrderFileDownloader.SftpExecutableResolver;
+            try
+            {
+                OpusSftpOrderFileDownloader.SftpExecutableResolver = () => null;
+
+                ConfigurationErrorsException ex = AssertCompat.Throws<ConfigurationErrorsException>(() =>
+                    OpusSftpOrderFileDownloader.ValidateStartupCompatibility(configuration));
+
+                StringAssert.Contains(ex.Message, "sftp.exe");
+                StringAssert.Contains(ex.Message, "OpenSSH Client");
+            }
+            finally
+            {
+                OpusSftpOrderFileDownloader.SftpExecutableResolver = originalResolver;
+                if (File.Exists(configuration.PrivateKeyPath))
+                    File.Delete(configuration.PrivateKeyPath);
+            }
+        }
+
+        [TestMethod]
+        public void Service_Constructor_Fails_Fast_When_Default_Downloader_Is_Not_Compatible()
+        {
+            OpusSftpOrderImportConfiguration configuration = new OpusSftpOrderImportConfiguration
+            {
+                Host = "localhost",
+                Port = 22,
+                Username = "opus",
+                PrivateKeyPath = CreateTemporaryFile("dummy-key"),
+                RemoteDirectory = "/orders"
+            };
+
+            Func<string> originalResolver = OpusSftpOrderFileDownloader.SftpExecutableResolver;
+            try
+            {
+                OpusSftpOrderFileDownloader.SftpExecutableResolver = () => null;
+
+                ConfigurationErrorsException ex = AssertCompat.Throws<ConfigurationErrorsException>(() =>
+                    new OpusSwapOrderImportService(configuration));
+
+                StringAssert.Contains(ex.Message, "startup validation failed");
+            }
+            finally
+            {
+                OpusSftpOrderFileDownloader.SftpExecutableResolver = originalResolver;
+                if (File.Exists(configuration.PrivateKeyPath))
+                    File.Delete(configuration.PrivateKeyPath);
+            }
+        }
+
+        private static string CreateTemporaryFile(string content)
+        {
+            string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".tmp");
+            File.WriteAllText(path, content ?? string.Empty);
+            return path;
         }
 
         private sealed class NoopImportGateway : ISwapOrderImportGateway

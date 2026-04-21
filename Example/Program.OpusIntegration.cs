@@ -1,7 +1,9 @@
 ﻿using Puma.MDE.OPUS;
+using Puma.MDE.OPUS.OrderImport;
 using Puma.MDE.OPUS.Models;
 using Puma.MDE.OPUS.Utilities;
 using System;
+using System.Configuration;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -10,16 +12,24 @@ namespace Puma.MDE.Test
 {
     partial class Program
     {
+        private const string OpusIntegrationLogPrefix = "[OpusApiIntegration] ";
+        private const string IntegrationStartedMessage = "Process of updating Asset Compositions and Swaps is started...";
+        private const string IntegrationCompletedMessage = "Process of updating Asset Compositions and Swaps are completed in OPUS API.";
+        private const string IntegrationContextFailureMessage = "The OPUS integration flow stopped before finishing all update steps.";
+        private const string IntegrationContextSuccessMessage = "Process of updating Asset Compositions and Swaps is completed in OPUS API.";
+        private const string ReadinessStartedMessage = "OPUS environment readiness validation started.";
+        private const string ReadinessSucceededMessage = "OPUS environment readiness validation succeeded.";
+        private const string ReadinessConfigurationFailureMessage = "OPUS environment readiness validation failed. Review OPUS SFTP configuration and OpenSSH availability before starting the integration flow.";
+        private const string ReadinessUnexpectedFailureMessage = "OPUS environment readiness validation failed unexpectedly before the integration flow started.";
+
         private static async Task<OpusOperationResult> OpusApiIntegration(bool opusEnabled, string opusAssetCompositionId)
         {
-            const string IntegrationContextFailureMessage = "The OPUS integration flow stopped before finishing all update steps.";
-            const string IntegrationContextSuccessMessage = "Process of updating Asset Compositions and Swaps is completed in OPUS API.";
             using (OpusMessageTrailContext.BeginScope())
             {
                 if (!opusEnabled)
                 {
                     string message = "OPUS integration is currently disabled.";
-                    Engine.Instance.Log.Warn("[OpusApiIntegration] " + message);
+                    Engine.Instance.Log.Warn(OpusIntegrationLogPrefix + message);
 
                     OpusOperationResult disabledResult = OpusOperationResult.Failure(message, message);
                     OpusMessageTrailContext.PrefixCompletedBeforeTrail(disabledResult);
@@ -30,7 +40,7 @@ namespace Puma.MDE.Test
                 if (string.IsNullOrWhiteSpace(opusAssetCompositionId))
                 {
                     string message = "Asset composition id is missing. Please provide a valid id and try again.";
-                    Engine.Instance.Log.Error("[OpusApiIntegration] Missing opusAssetCompositionId.");
+                    Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Missing opusAssetCompositionId.");
 
                     OpusOperationResult missingAssetResult = OpusOperationResult.Failure(message, "Missing opusAssetCompositionId.");
                     OpusMessageTrailContext.PrefixCompletedBeforeTrail(missingAssetResult);
@@ -38,7 +48,15 @@ namespace Puma.MDE.Test
                     return missingAssetResult;
                 }
 
-                Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps is started...");
+                Engine.Instance.Log.Info(OpusIntegrationLogPrefix + IntegrationStartedMessage);
+
+                OpusOperationResult readinessResult = ValidateOpusEnvironmentReadiness();
+                if (!readinessResult.IsSuccess)
+                {
+                    OpusMessageTrailContext.PrefixCompletedBeforeTrail(readinessResult);
+                    readinessResult.AddFriendlyContext(IntegrationContextFailureMessage);
+                    return readinessResult;
+                }
 
                 OpusConfiguration opusConfiguration = new OpusConfiguration
                 {
@@ -59,7 +77,7 @@ namespace Puma.MDE.Test
                     string.IsNullOrWhiteSpace(opusConfiguration.GraphQlUrl) ||
                     string.IsNullOrWhiteSpace(opusConfiguration.TokenUrl))
                 {
-                    Engine.Instance.Log.Error("[OpusApiIntegration] Required OPUS configuration values are missing.");
+                    Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Required OPUS configuration values are missing.");
 
                     OpusOperationResult configurationResult = OpusOperationResult.Failure(FriendlyConfigurationErrorMessage, "Required OPUS configuration values are missing.");
                     OpusMessageTrailContext.PrefixCompletedBeforeTrail(configurationResult);
@@ -92,7 +110,7 @@ namespace Puma.MDE.Test
                     OpusOperationResult<string> executeResult = await processor.TryExecuteAsync().ConfigureAwait(false);
                     if (!executeResult.IsSuccess)
                     {
-                        Engine.Instance.Log.Error("[OpusApiIntegration] Execute failed: " + executeResult.ErrorMessage);
+                        Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Execute failed: " + executeResult.ErrorMessage);
                         OpusMessageTrailContext.PrefixCompletedBeforeTrail(executeResult);
                         executeResult.AddFriendlyContext(IntegrationContextFailureMessage);
                         return executeResult;
@@ -102,7 +120,7 @@ namespace Puma.MDE.Test
                     if (string.IsNullOrWhiteSpace(swapId))
                     {
                         string message = "Unable to complete OPUS update because no valid swap was returned.";
-                        Engine.Instance.Log.Error("[OpusApiIntegration] Processor returned empty swap id.");
+                        Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Processor returned empty swap id.");
 
                         OpusOperationResult missingSwapResult = OpusOperationResult.Failure(message, "Processor returned empty swap id.");
                         OpusMessageTrailContext.PrefixCompletedBeforeTrail(missingSwapResult);
@@ -123,7 +141,7 @@ namespace Puma.MDE.Test
                     OpusOperationResult<OpusApiResponse<AssetQuote>> createQuoteResult = await processor.TryCreateSwapQuoteAsync(swapId, quote).ConfigureAwait(false);
                     if (!createQuoteResult.IsSuccess)
                     {
-                        Engine.Instance.Log.Error("[OpusApiIntegration] Create quote failed: " + createQuoteResult.ErrorMessage);
+                        Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Create quote failed: " + createQuoteResult.ErrorMessage);
                         OpusMessageTrailContext.PrefixCompletedBeforeTrail(createQuoteResult);
                         createQuoteResult.AddFriendlyContext(IntegrationContextFailureMessage);
                         return createQuoteResult;
@@ -141,13 +159,13 @@ namespace Puma.MDE.Test
                     OpusOperationResult nominalUpdateResult = await processor.TryUpdateSwapNominalAsync(swapId, swapNominalPatch).ConfigureAwait(false);
                     if (!nominalUpdateResult.IsSuccess)
                     {
-                        Engine.Instance.Log.Error("[OpusApiIntegration] Update nominal failed: " + nominalUpdateResult.ErrorMessage);
+                        Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Update nominal failed: " + nominalUpdateResult.ErrorMessage);
                         OpusMessageTrailContext.PrefixCompletedBeforeTrail(nominalUpdateResult);
                         nominalUpdateResult.AddFriendlyContext(IntegrationContextFailureMessage);
                         return nominalUpdateResult;
                     }
 
-                    Engine.Instance.Log.Info("Process of updating Asset Compositions and Swaps are completed in OPUS API.");
+                    Engine.Instance.Log.Info(OpusIntegrationLogPrefix + IntegrationCompletedMessage);
 
                     var patch = new SwapPatch
                     {
@@ -178,13 +196,37 @@ namespace Puma.MDE.Test
                 }
                 catch (Exception ex)
                 {
-                    Engine.Instance.Log.Error($"[OpusApiIntegration] Integration failed: {ex}");
+                    Engine.Instance.Log.Error(OpusIntegrationLogPrefix + "Integration failed: " + ex);
 
                     OpusOperationResult exceptionResult = OpusOperationResult.Failure(FriendlyUnexpectedErrorMessage, ex.Message);
                     OpusMessageTrailContext.PrefixCompletedBeforeTrail(exceptionResult);
                     exceptionResult.AddFriendlyContext(IntegrationContextFailureMessage);
                     return exceptionResult;
                 }
+            }
+        }
+
+        private static OpusOperationResult ValidateOpusEnvironmentReadiness()
+        {
+            Engine.Instance.Log.Info(OpusIntegrationLogPrefix + ReadinessStartedMessage);
+
+            try
+            {
+                OpusSftpOrderImportConfiguration configuration = OpusSftpOrderImportConfiguration.FromAppSettings();
+                OpusSftpOrderFileDownloader.ValidateStartupCompatibility(configuration);
+
+                Engine.Instance.Log.Info(OpusIntegrationLogPrefix + ReadinessSucceededMessage);
+                return OpusOperationResult.Success(ReadinessSucceededMessage);
+            }
+            catch (ConfigurationErrorsException ex)
+            {
+                Engine.Instance.Log.Error(OpusIntegrationLogPrefix + ReadinessConfigurationFailureMessage + " Details: " + ex.Message);
+                return OpusOperationResult.Failure(ReadinessConfigurationFailureMessage, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error(OpusIntegrationLogPrefix + ReadinessUnexpectedFailureMessage + " Details: " + ex);
+                return OpusOperationResult.Failure(ReadinessUnexpectedFailureMessage, ex.Message);
             }
         }
 

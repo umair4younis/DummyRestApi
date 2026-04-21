@@ -21,6 +21,13 @@ namespace Puma.MDE.OPUS.OrderImport
             ISwapOrderImportGateway importGateway = null)
         {
             _configuration = configuration ?? OpusSftpOrderImportConfiguration.FromAppSettings();
+
+            if (fileDownloader == null)
+            {
+                Engine.Instance.Log.Info("[OpusSwapOrderImportService] Running startup validation for default SFTP downloader.");
+                OpusSftpOrderFileDownloader.ValidateStartupCompatibility(_configuration);
+            }
+
             _fileDownloader = fileDownloader ?? new OpusSftpOrderFileDownloader().DownloadLatestFile;
             _fileParser = fileParser ?? new OpusSwapOrderFileParser().Parse;
             _importGateway = importGateway ?? new OrderManagerImportGateway();
