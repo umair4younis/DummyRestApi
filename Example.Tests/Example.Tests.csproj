@@ -57,6 +57,7 @@
     <Reference Include="System.ComponentModel.DataAnnotations" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
+    <Reference Include="System.IO.Compression" />
     <Reference Include="System.Net.Http" />
   </ItemGroup>
   <ItemGroup>
@@ -76,7 +77,9 @@
     <Compile Include="Tests\OpusApiClientTests.cs" />
     <Compile Include="Tests\OpusCircuitBreakerTests.cs" />
     <Compile Include="Tests\OpusGraphQLClientTests.cs" />
+    <Compile Include="Tests\OpusOrderImportAdditionalTests.cs" />
     <Compile Include="Tests\OpusSafeWrapperTests.cs" />
+    <Compile Include="Tests\OpusSwapOrderImportServiceTests.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.Core.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.DeltaFlows.cs" />

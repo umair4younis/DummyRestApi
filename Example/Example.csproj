@@ -405,6 +405,14 @@
     <Compile Include="OPUS\OpusWeightUpdateProcessor.Quotes.cs" />
     <Compile Include="OPUS\OpusWeightUpdateProcessor.Safe.cs" />
     <Compile Include="OPUS\OpusWeightUpdateProcessor.cs" />
+    <Compile Include="OPUS\OrderImport\OpusSftpOrderFileDownloader.cs" />
+    <Compile Include="OPUS\OrderImport\DownloadedOrderFile.cs" />
+    <Compile Include="OPUS\OrderImport\ISwapOrderImportGateway.cs" />
+    <Compile Include="OPUS\OrderImport\OpusOrderImportRetryExecutor.cs" />
+    <Compile Include="OPUS\OrderImport\OpusSftpOrderImportConfiguration.cs" />
+    <Compile Include="OPUS\OrderImport\OpusSwapOrderFileParser.cs" />
+    <Compile Include="OPUS\OrderImport\OpusSwapOrderImportService.cs" />
+    <Compile Include="OPUS\OrderImport\OrderManagerImportGateway.cs" />
     <Compile Include="OPUS\TestDelayService.cs" />
     <Compile Include="OPUS\Tests\FakeEngine.cs" />
     <Compile Include="OPUS\Tests\FakeHttpMessageHandler.cs" />
