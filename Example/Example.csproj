@@ -428,6 +428,7 @@
     <Compile Include="Program.DataPrep.cs" />
     <Compile Include="Program.OpusIntegration.cs" />
     <Compile Include="Quotation\Processing.cs" />
+    <Compile Include="SwapUtils\OrderManager.cs" />
     <Compile Include="VolsurfaceModelling\IVolsurfaceModel.cs" />
     <Compile Include="VolsurfaceModelling\VolsurfaceModel.cs" />
     <Compile Include="VolsurfaceProcessing\Processor.cs" />
