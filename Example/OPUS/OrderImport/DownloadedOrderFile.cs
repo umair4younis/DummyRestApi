@@ -1,7 +1,7 @@
 ﻿using System;
 
 
-namespace Example.OPUS.OrderImport
+namespace Puma.MDE.OPUS.OrderImport
 {
     public class DownloadedOrderFile
     {

@@ -5,6 +5,13 @@ namespace Puma.MDE.OPUS
 {
     public partial class OpusCircuitBreaker
     {
+        public int FailureThreshold => _failureThreshold;
+        public int BreakDurationSeconds => (int)_breakDuration.TotalSeconds;
+        public int MaxRetries => _maxRetries;
+        public int BaseRetryDelayMs => _baseRetryDelayMs;
+        public double BackoffFactor => _backoffFactor;
+        public double JitterMaxFactor => _jitterMaxFactor;
+
         public int TotalFailures => _totalFailures;
         public int TotalSuccesses => _totalSuccesses;
         public int ConsecutiveFailures => _consecutiveFailures;

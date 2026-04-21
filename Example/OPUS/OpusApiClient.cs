@@ -42,12 +42,13 @@ namespace Puma.MDE.OPUS
             // Network timeouts should be shorter than circuit breaker break duration (90s by default).
             _httpClient.Timeout = TimeSpan.FromSeconds(60);
 
-            _opusCircuitBreaker = new OpusCircuitBreaker(
-                failureThreshold: 4,
-                breakSeconds: 90
-            );
+            _opusCircuitBreaker = new OpusCircuitBreaker("Opus.Api.CircuitBreaker");
 
-            Engine.Instance.Log.Info($"[OpusApiClient] Initialized with timeout=60s, circuit breaker(threshold=4, break=90s)");
+            Engine.Instance.Log.Info(string.Format(
+                "[OpusApiClient] Initialized with timeout=60s, circuit breaker(threshold={0}, break={1}s, retries={2})",
+                _opusCircuitBreaker.FailureThreshold,
+                _opusCircuitBreaker.BreakDurationSeconds,
+                _opusCircuitBreaker.MaxRetries));
         }
 
         public static OpusOperationResult<OpusApiClient> TryCreate(

@@ -2,7 +2,10 @@
 using Puma.MDE.OPUS.Exceptions;
 using Puma.MDE.OPUS;
 using System;
+using System.Configuration;
+using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 using static Puma.MDE.OPUS.OpusCircuitBreaker;
 
@@ -151,6 +154,86 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(snapshot.Contains("Successes: 0"));
             Assert.IsTrue(snapshot.Contains("Failures: 0"));
             Assert.IsTrue(snapshot.Contains("Next retry: Now"));
+        }
+
+        [TestMethod]
+        public void Constructor_With_AppConfig_Prefix_Uses_Configured_Values()
+        {
+            string tempConfigPath = Path.Combine(Path.GetTempPath(), "OpusCircuitBreakerTests_" + Guid.NewGuid().ToString("N") + ".config");
+            File.WriteAllText(tempConfigPath,
+@"<?xml version=""1.0"" encoding=""utf-8"" ?>
+<configuration>
+    <appSettings>
+        <add key=""Test.CircuitBreaker.FailureThreshold"" value=""7"" />
+        <add key=""Test.CircuitBreaker.BreakSeconds"" value=""45"" />
+        <add key=""Test.CircuitBreaker.Retries"" value=""2"" />
+        <add key=""Test.CircuitBreaker.BaseRetryDelayMs"" value=""250"" />
+        <add key=""Test.CircuitBreaker.BackoffFactor"" value=""1.25"" />
+        <add key=""Test.CircuitBreaker.JitterMaxFactor"" value=""0.15"" />
+    </appSettings>
+</configuration>");
+
+            string originalConfigPath = AppDomain.CurrentDomain.GetData("APP_CONFIG_FILE") as string;
+            try
+            {
+                AppDomain.CurrentDomain.SetData("APP_CONFIG_FILE", tempConfigPath);
+                ResetConfigurationManager();
+
+                OpusCircuitBreaker configured = new OpusCircuitBreaker("Test.CircuitBreaker");
+
+                Assert.AreEqual(7, configured.FailureThreshold);
+                Assert.AreEqual(45, configured.BreakDurationSeconds);
+                Assert.AreEqual(2, configured.MaxRetries);
+                Assert.AreEqual(250, configured.BaseRetryDelayMs);
+                Assert.AreEqual(1.25, configured.BackoffFactor, 0.0001);
+                Assert.AreEqual(0.15, configured.JitterMaxFactor, 0.0001);
+            }
+            finally
+            {
+                AppDomain.CurrentDomain.SetData("APP_CONFIG_FILE", originalConfigPath);
+                ResetConfigurationManager();
+
+                if (File.Exists(tempConfigPath))
+                    File.Delete(tempConfigPath);
+            }
+        }
+
+        [TestMethod]
+        public void Constructor_With_Explicit_Values_Overrides_Config()
+        {
+            OpusCircuitBreaker explicitBreaker = new OpusCircuitBreaker(
+                failureThreshold: 2,
+                breakSeconds: 15,
+                maxRetries: 0,
+                baseRetryDelayMs: 250,
+                backoffFactor: 1.1,
+                jitterMaxFactor: 0.2);
+
+            Assert.AreEqual(2, explicitBreaker.FailureThreshold);
+            Assert.AreEqual(15, explicitBreaker.BreakDurationSeconds);
+            Assert.AreEqual(0, explicitBreaker.MaxRetries);
+            Assert.AreEqual(250, explicitBreaker.BaseRetryDelayMs);
+            Assert.AreEqual(1.1, explicitBreaker.BackoffFactor, 0.0001);
+            Assert.AreEqual(0.2, explicitBreaker.JitterMaxFactor, 0.0001);
+        }
+
+        private static void ResetConfigurationManager()
+        {
+            Type configManagerType = typeof(ConfigurationManager);
+
+            FieldInfo configSystem = configManagerType.GetField("s_configSystem", BindingFlags.Static | BindingFlags.NonPublic);
+            if (configSystem != null)
+                configSystem.SetValue(null, null);
+
+            FieldInfo initState = configManagerType.GetField("s_initState", BindingFlags.Static | BindingFlags.NonPublic);
+            if (initState != null)
+                initState.SetValue(null, 0);
+
+            FieldInfo clientConfigPaths = configManagerType.GetField("s_current", BindingFlags.Static | BindingFlags.NonPublic);
+            if (clientConfigPaths != null)
+                clientConfigPaths.SetValue(null, null);
+
+            ConfigurationManager.RefreshSection("appSettings");
         }
     }
 }

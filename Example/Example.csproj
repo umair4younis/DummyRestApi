@@ -51,6 +51,10 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>DLL\NLog.dll</HintPath>
     </Reference>
+    <Reference Include="Renci.SshNet, Version=2016.1.0.0, Culture=neutral, PublicKeyToken=1cee9f8bde3db106, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>DLL\Renci.SshNet.dll</HintPath>
+    </Reference>
     <Reference Include="SR2COM, Version=1.5.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <EmbedInteropTypes>True</EmbedInteropTypes>
@@ -398,6 +402,7 @@
     <Compile Include="OPUS\OpusCircuitBreaker.Transient.cs" />
     <Compile Include="OPUS\OpusCircuitBreaker.Metrics.cs" />
     <Compile Include="OPUS\OpusCircuitBreaker.cs" />
+    <Compile Include="OPUS\OpusCircuitBreakerSettings.cs" />
     <Compile Include="OPUS\OpusConfiguration.cs" />
     <Compile Include="OPUS\OpusGraphQLClient.cs" />
     <Compile Include="OPUS\OpusHttpClientHandler.cs" />
@@ -445,6 +450,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <Content Include="DLL\Renci.SshNet.dll" />
     <Content Include="DLL\SR2COM.dll" />
     <Content Include="OPUS\Cert\api.pfx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -455,6 +461,9 @@
     <Content Include="DLL\Newtonsoft.Json.dll" />
     <Content Include="DLL\NHibernate.dll" />
     <Content Include="DLL\NLog.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <WCFMetadata Include="Connected Services\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

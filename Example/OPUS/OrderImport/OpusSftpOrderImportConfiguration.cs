@@ -22,6 +22,10 @@ namespace Puma.MDE.OPUS.OrderImport
 
         public string Password { get; set; }
 
+        public string Otp { get; set; }
+
+        public bool ExpectKeyboardInteractiveAuth { get; set; }
+
         public string PrivateKeyPath { get; set; }
 
         public string PrivateKeyPassphrase { get; set; }
@@ -44,6 +48,12 @@ namespace Puma.MDE.OPUS.OrderImport
 
         public RetryPolicy RetryPolicy { get; set; }
 
+        public int CircuitBreakerFailureThreshold { get; set; }
+
+        public int CircuitBreakerBreakSeconds { get; set; }
+
+        public int CircuitBreakerRetries { get; set; }
+
         public OpusSftpOrderImportConfiguration()
         {
             Port = 22;
@@ -55,6 +65,10 @@ namespace Puma.MDE.OPUS.OrderImport
             DefaultFxRate = 1.0;
             DefaultContractSize = 1.0;
             RetryPolicy = new RetryPolicy();
+            CircuitBreakerFailureThreshold = 3;
+            CircuitBreakerBreakSeconds = 30;
+            CircuitBreakerRetries = 0;
+            ExpectKeyboardInteractiveAuth = false;
         }
 
         public static OpusSftpOrderImportConfiguration FromAppSettings()
@@ -70,6 +84,8 @@ namespace Puma.MDE.OPUS.OrderImport
                 FilePattern = AppSettings.Get("Opus.Sftp.FilePattern", "SwapRawOrder*.csv"),
                 Username = AppSettings.GetRequired("Opus.Sftp.Username"),
                 Password = AppSettings.Get("Opus.Sftp.Password"),
+                Otp = AppSettings.Get("Opus.Sftp.Otp"),
+                ExpectKeyboardInteractiveAuth = AppSettings.GetAs("Opus.Sftp.ExpectKeyboardInteractiveAuth", bool.Parse, false),
                 PrivateKeyPath = AppSettings.Get("Opus.Sftp.PrivateKeyPath"),
                 PrivateKeyPassphrase = AppSettings.Get("Opus.Sftp.PrivateKeyPassphrase"),
                 SheetName = AppSettings.Get("Opus.OrderImport.SheetName"),
@@ -84,14 +100,17 @@ namespace Puma.MDE.OPUS.OrderImport
                     BaseDelayMs = Math.Max(0, AppSettings.GetInt("Opus.OrderImport.Retry.BaseDelayMs", 1000)),
                     BackoffFactor = AppSettings.GetAs("Opus.OrderImport.Retry.BackoffFactor", ParseDouble, 2.0),
                     JitterMaxFactor = AppSettings.GetAs("Opus.OrderImport.Retry.JitterMaxFactor", ParseDouble, 0.5)
-                }
+                },
+                CircuitBreakerFailureThreshold = Math.Max(1, AppSettings.GetInt("Opus.OrderImport.CircuitBreaker.FailureThreshold", 3)),
+                CircuitBreakerBreakSeconds = Math.Max(1, AppSettings.GetInt("Opus.OrderImport.CircuitBreaker.BreakSeconds", 30)),
+                CircuitBreakerRetries = Math.Max(0, AppSettings.GetInt("Opus.OrderImport.CircuitBreaker.Retries", 0))
             };
 
             configuration.DefaultOrderType = ParseEnum(AppSettings.Get("Opus.OrderImport.Type"), TypeManastOrder.Transaction);
             configuration.DefaultUpdatePoolUpon = ParseEnum(AppSettings.Get("Opus.OrderImport.UpdatePoolUpon"), TypeManastUpdatePoolUpon.eDoNotUpdate);
 
             Engine.Instance.Log.Info(string.Format(
-                "[OpusSftpOrderImportConfiguration] Loaded config. Host={0}, Port={1}, RemoteDirectorySet={2}, RemoteFilePathSet={3}, FilePattern={4}, SheetName={5}, HeaderRowIndex={6}, AuthModes={7}",
+                "[OpusSftpOrderImportConfiguration] Loaded config. Host={0}, Port={1}, RemoteDirectorySet={2}, RemoteFilePathSet={3}, FilePattern={4}, SheetName={5}, HeaderRowIndex={6}, AuthModes={7}, CBThreshold={8}, CBBreakSeconds={9}, CBRetries={10}",
                 configuration.Host,
                 configuration.Port,
                 !string.IsNullOrWhiteSpace(configuration.RemoteDirectory),
@@ -99,7 +118,10 @@ namespace Puma.MDE.OPUS.OrderImport
                 configuration.FilePattern,
                 string.IsNullOrWhiteSpace(configuration.SheetName) ? "<default>" : configuration.SheetName,
                 configuration.HeaderRowIndex,
-                BuildAuthModesLabel(configuration)));
+                BuildAuthModesLabel(configuration),
+                configuration.CircuitBreakerFailureThreshold,
+                configuration.CircuitBreakerBreakSeconds,
+                configuration.CircuitBreakerRetries));
 
             configuration.Validate();
             return configuration;
@@ -139,22 +161,44 @@ namespace Puma.MDE.OPUS.OrderImport
                 throw new ConfigurationErrorsException("Either Opus.Sftp.Password or Opus.Sftp.PrivateKeyPath must be configured.");
             }
 
+            if (CircuitBreakerFailureThreshold < 1)
+            {
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreaker.FailureThreshold must be >= 1.");
+                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreaker.FailureThreshold must be >= 1.");
+            }
+
+            if (CircuitBreakerBreakSeconds < 1)
+            {
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreaker.BreakSeconds must be >= 1.");
+                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreaker.BreakSeconds must be >= 1.");
+            }
+
+            if (CircuitBreakerRetries < 0)
+            {
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreaker.Retries must be >= 0.");
+                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreaker.Retries must be >= 0.");
+            }
+
             Engine.Instance.Log.Debug("[OpusSftpOrderImportConfiguration] Configuration validation passed.");
         }
 
         private static string BuildAuthModesLabel(OpusSftpOrderImportConfiguration configuration)
         {
             bool hasPassword = !string.IsNullOrWhiteSpace(configuration.Password);
+            bool hasOtp = !string.IsNullOrWhiteSpace(configuration.Otp);
             bool hasPrivateKey = !string.IsNullOrWhiteSpace(configuration.PrivateKeyPath);
 
             if (hasPassword && hasPrivateKey)
-                return "password+privateKey";
+                return hasOtp ? "password+otp+privateKey" : "password+privateKey";
 
             if (hasPassword)
-                return "password";
+                return hasOtp ? "password+otp" : "password";
 
             if (hasPrivateKey)
-                return "privateKey";
+                return hasOtp ? "privateKey+otp" : "privateKey";
+
+            if (hasOtp)
+                return "otp";
 
             return "none";
         }

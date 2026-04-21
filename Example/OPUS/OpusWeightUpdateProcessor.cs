@@ -66,13 +66,7 @@ namespace Puma.MDE.OPUS
             if (_opusGraphQLClient == null) throw new ArgumentNullException("opusGraphQLClient");
             if (_opusApiClient == null) throw new ArgumentNullException("opusApiClient");
 
-            _opusCircuitBreaker = opusCircuitBreaker ?? new OpusCircuitBreaker(
-                failureThreshold: 5,
-                breakSeconds: 60,
-                maxRetries: 3,
-                baseRetryDelayMs: 1000,
-                backoffFactor: 2.0,
-                jitterMaxFactor: 0.5);
+            _opusCircuitBreaker = opusCircuitBreaker ?? new OpusCircuitBreaker("Opus.WeightUpdate.CircuitBreaker");
 
             // Initialize retry policies
             _parentValidationPolicy = new RetryPolicy
@@ -95,15 +89,11 @@ namespace Puma.MDE.OPUS
             _parentValidationPolicy.IsRetryable = IsTransientError;
             _bbgBatchPolicy.IsRetryable = IsTransientError;
 
-            // Single shared circuit breaker for all operations (tune parameters as needed)
-            _opusCircuitBreaker = new OpusCircuitBreaker(
-                failureThreshold: 5,
-                breakSeconds: 60,
-                maxRetries: 3,
-                baseRetryDelayMs: 1000,
-                backoffFactor: 2.0,
-                jitterMaxFactor: 0.5
-            );
+            Engine.Instance.Log.Debug(string.Format(
+                "[OpusWeightUpdateProcessor] Circuit breaker configured. Threshold={0}, BreakSeconds={1}, Retries={2}",
+                _opusCircuitBreaker.FailureThreshold,
+                _opusCircuitBreaker.BreakDurationSeconds,
+                _opusCircuitBreaker.MaxRetries));
         }
 
         /// <summary>

@@ -1,5 +1,4 @@
-﻿using Example.OPUS.OrderImport;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puma.MDE.Data;
 using Puma.MDE.OPUS.OrderImport;
 using Puma.MDE.SwapUtils;

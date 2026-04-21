@@ -1,4 +1,5 @@
 ﻿using Puma.MDE.OPUS.Exceptions;
+using System.Globalization;
 using System;
 using System.Threading.Tasks;
 
@@ -7,6 +8,8 @@ namespace Puma.MDE.OPUS
 {
     public partial class OpusCircuitBreaker
     {
+        public const string DefaultConfigPrefix = "Opus.CircuitBreaker";
+
         // ── Configuration ──────────────────────────────────────────────────────────
         private readonly int _failureThreshold;
         private readonly TimeSpan _breakDuration;
@@ -30,13 +33,45 @@ namespace Puma.MDE.OPUS
         private DateTime _lastSuccessTime = DateTime.MinValue;
         private DateTime _lastFailureTime = DateTime.MinValue;
 
+        public OpusCircuitBreaker()
+            : this(DefaultConfigPrefix)
+        {
+        }
+
+        public OpusCircuitBreaker(string appSettingsPrefix)
+            : this(LoadFromAppSettings(appSettingsPrefix))
+        {
+        }
+
+        public OpusCircuitBreaker(OpusCircuitBreakerSettings settings)
+            : this(
+                (settings ?? throw new ArgumentNullException(nameof(settings))).FailureThreshold,
+                settings.BreakSeconds,
+                settings.MaxRetries,
+                settings.BaseRetryDelayMs,
+                settings.BackoffFactor,
+                settings.JitterMaxFactor)
+        {
+        }
+
+        public OpusCircuitBreaker(int failureThreshold, int breakSeconds, int maxRetries)
+            : this(
+                failureThreshold,
+                breakSeconds,
+                maxRetries,
+                LoadFromAppSettings(DefaultConfigPrefix).BaseRetryDelayMs,
+                LoadFromAppSettings(DefaultConfigPrefix).BackoffFactor,
+                LoadFromAppSettings(DefaultConfigPrefix).JitterMaxFactor)
+        {
+        }
+
         public OpusCircuitBreaker(
-            int failureThreshold = 5,
-            int breakSeconds = 60,
-            int maxRetries = 1,
-            int baseRetryDelayMs = 1000,
-            double backoffFactor = 2.0,
-            double jitterMaxFactor = 0.5)
+            int failureThreshold,
+            int breakSeconds,
+            int maxRetries,
+            int baseRetryDelayMs,
+            double backoffFactor,
+            double jitterMaxFactor)
         {
             if (failureThreshold < 1) throw new ArgumentOutOfRangeException(nameof(failureThreshold));
             if (breakSeconds < 1) throw new ArgumentOutOfRangeException(nameof(breakSeconds));
@@ -48,6 +83,72 @@ namespace Puma.MDE.OPUS
             _baseRetryDelayMs = baseRetryDelayMs;
             _backoffFactor = backoffFactor;
             _jitterMaxFactor = jitterMaxFactor;
+        }
+
+        private static OpusCircuitBreakerSettings LoadFromAppSettings(string appSettingsPrefix)
+        {
+            string prefix = string.IsNullOrWhiteSpace(appSettingsPrefix)
+                ? DefaultConfigPrefix
+                : appSettingsPrefix.Trim();
+
+            OpusCircuitBreakerSettings hardcodedFallback = new OpusCircuitBreakerSettings
+            {
+                FailureThreshold = 5,
+                BreakSeconds = 60,
+                MaxRetries = 1,
+                BaseRetryDelayMs = 1000,
+                BackoffFactor = 2.0,
+                JitterMaxFactor = 0.5
+            };
+
+            OpusCircuitBreakerSettings globalDefaults = new OpusCircuitBreakerSettings
+            {
+                FailureThreshold = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".FailureThreshold", hardcodedFallback.FailureThreshold),
+                BreakSeconds = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".BreakSeconds", hardcodedFallback.BreakSeconds),
+                MaxRetries = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".Retries", hardcodedFallback.MaxRetries),
+                BaseRetryDelayMs = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".BaseRetryDelayMs", hardcodedFallback.BaseRetryDelayMs),
+                BackoffFactor = Puma.MDE.AppSettings.GetAs(DefaultConfigPrefix + ".BackoffFactor", ParseDoubleInvariant, hardcodedFallback.BackoffFactor),
+                JitterMaxFactor = Puma.MDE.AppSettings.GetAs(DefaultConfigPrefix + ".JitterMaxFactor", ParseDoubleInvariant, hardcodedFallback.JitterMaxFactor)
+            };
+
+            OpusCircuitBreakerSettings resolved = new OpusCircuitBreakerSettings
+            {
+                FailureThreshold = Puma.MDE.AppSettings.GetInt(prefix + ".FailureThreshold", globalDefaults.FailureThreshold),
+                BreakSeconds = Puma.MDE.AppSettings.GetInt(prefix + ".BreakSeconds", globalDefaults.BreakSeconds),
+                MaxRetries = Puma.MDE.AppSettings.GetInt(prefix + ".Retries", globalDefaults.MaxRetries),
+                BaseRetryDelayMs = Puma.MDE.AppSettings.GetInt(prefix + ".BaseRetryDelayMs", globalDefaults.BaseRetryDelayMs),
+                BackoffFactor = Puma.MDE.AppSettings.GetAs(prefix + ".BackoffFactor", ParseDoubleInvariant, globalDefaults.BackoffFactor),
+                JitterMaxFactor = Puma.MDE.AppSettings.GetAs(prefix + ".JitterMaxFactor", ParseDoubleInvariant, globalDefaults.JitterMaxFactor)
+            };
+
+            if (resolved.FailureThreshold < 1)
+                resolved.FailureThreshold = globalDefaults.FailureThreshold;
+
+            if (resolved.BreakSeconds < 1)
+                resolved.BreakSeconds = globalDefaults.BreakSeconds;
+
+            if (resolved.MaxRetries < 0)
+                resolved.MaxRetries = globalDefaults.MaxRetries;
+
+            if (resolved.BaseRetryDelayMs < 0)
+                resolved.BaseRetryDelayMs = globalDefaults.BaseRetryDelayMs;
+
+            if (resolved.BackoffFactor <= 0)
+                resolved.BackoffFactor = globalDefaults.BackoffFactor;
+
+            if (resolved.JitterMaxFactor < 0)
+                resolved.JitterMaxFactor = globalDefaults.JitterMaxFactor;
+
+            return resolved;
+        }
+
+        private static double ParseDoubleInvariant(string value)
+        {
+            double parsed;
+            if (!double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out parsed))
+                throw new FormatException("Invalid double value: '" + value + "'.");
+
+            return parsed;
         }
 
         public virtual async Task<T> ExecuteAsync<T>(Func<Task<T>> operation)
