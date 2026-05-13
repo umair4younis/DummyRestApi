@@ -5,6 +5,7 @@ using Puma.MDE.SwapUtils;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
@@ -63,9 +64,7 @@ namespace Puma.MDE.OPUS.OrderImport
 
             Engine.Instance.Log.Info("[OpusSwapOrderImportService] Building full unwind order for account: " + selectedAccount.AccountName);
 
-            DownloadedOrderFile downloadedFile = ExecuteWithCircuitBreaker(
-                () => _fileDownloader(_configuration),
-                "Download OPUS SFTP order file");
+            DownloadedOrderFile downloadedFile = DownloadOrderFileWithFallback();
             if (downloadedFile == null)
                 throw new InvalidOperationException("No OPUS SFTP order file was downloaded.");
 
@@ -135,10 +134,163 @@ namespace Puma.MDE.OPUS.OrderImport
                 errors == null ? 0 : errors.Count));
         }
 
+        private DownloadedOrderFile DownloadOrderFileWithFallback()
+        {
+            Engine.Instance.Log.Info("[OpusSwapOrderImportService] Starting order-file acquisition with SFTP primary and local fallback strategy.");
+            Exception sftpFailure = null;
+
+            try
+            {
+                Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Attempting primary SFTP order-file download.");
+                DownloadedOrderFile sftpFile = ExecuteWithCircuitBreaker(
+                    () => _fileDownloader(_configuration),
+                    "Download OPUS SFTP order file");
+
+                if (sftpFile != null && sftpFile.Content != null && sftpFile.Content.Length > 0)
+                {
+                    Engine.Instance.Log.Info(string.Format(
+                        "[OpusSwapOrderImportService] Primary SFTP download succeeded. FileName={0}, RemotePath={1}, SizeBytes={2}",
+                        sftpFile.FileName,
+                        sftpFile.RemotePath,
+                        sftpFile.Content.Length));
+                    return sftpFile;
+                }
+
+                Engine.Instance.Log.Warn("[OpusSwapOrderImportService] SFTP download returned no file content. Falling back to local OPUS order-import folder.");
+            }
+            catch (Exception ex)
+            {
+                if (IsTemporarilyUnavailableFailure(ex))
+                {
+                    Engine.Instance.Log.Warn("[OpusSwapOrderImportService] SFTP primary path is temporarily unavailable due to circuit breaker state. Skipping local fallback and rethrowing.");
+                    throw;
+                }
+
+                sftpFailure = ex;
+                Engine.Instance.Log.Warn("[OpusSwapOrderImportService] SFTP download failed. Falling back to local OPUS order-import folder. Reason: " + ex.Message);
+            }
+
+            try
+            {
+                Engine.Instance.Log.Info("[OpusSwapOrderImportService] Attempting local fallback file load.");
+                DownloadedOrderFile fallbackFile = LoadLatestLocalFallbackFile();
+                Engine.Instance.Log.Info(string.Format(
+                    "[OpusSwapOrderImportService] Local fallback load succeeded. FileName={0}, FilePath={1}, SizeBytes={2}",
+                    fallbackFile.FileName,
+                    fallbackFile.RemotePath,
+                    fallbackFile.Content == null ? 0 : fallbackFile.Content.Length));
+                return fallbackFile;
+            }
+            catch (Exception fallbackEx)
+            {
+                if (sftpFailure == null)
+                    throw;
+
+                Engine.Instance.Log.Error("[OpusSwapOrderImportService] Both SFTP primary and local fallback acquisition failed.", fallbackEx);
+
+                throw new InvalidOperationException(
+                    "OPUS order import could not obtain a source file. SFTP download failed and local fallback file resolution also failed.",
+                    new AggregateException(sftpFailure, fallbackEx));
+            }
+        }
+
+        private DownloadedOrderFile LoadLatestLocalFallbackFile()
+        {
+            string configuredDirectory = string.IsNullOrWhiteSpace(_configuration.LocalFallbackDirectory)
+                ? Path.Combine("OPUS", "OrderImportFallback")
+                : _configuration.LocalFallbackDirectory;
+            Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Local fallback directory from configuration: " + configuredDirectory);
+
+            string localFallbackDirectory = ResolvePath(configuredDirectory);
+            Directory.CreateDirectory(localFallbackDirectory);
+
+            Engine.Instance.Log.Info("[OpusSwapOrderImportService] Using local fallback directory for order import: " + localFallbackDirectory);
+
+            string fallbackFilePath = ResolveFallbackFilePath(localFallbackDirectory);
+            Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Reading local fallback file: " + fallbackFilePath);
+            byte[] content = File.ReadAllBytes(fallbackFilePath);
+
+            if (content == null || content.Length == 0)
+                throw new InvalidOperationException("Local fallback file is empty: " + fallbackFilePath);
+
+            FileInfo fileInfo = new FileInfo(fallbackFilePath);
+            Engine.Instance.Log.Debug(string.Format(
+                "[OpusSwapOrderImportService] Local fallback file metadata. LastWriteTimeUtc={0:O}, SizeBytes={1}",
+                fileInfo.LastWriteTimeUtc,
+                fileInfo.Length));
+
+            return new DownloadedOrderFile
+            {
+                FileName = fileInfo.Name,
+                RemotePath = fileInfo.FullName,
+                Content = content,
+                LastWriteTimeUtc = fileInfo.LastWriteTimeUtc
+            };
+        }
+
+        private string ResolveFallbackFilePath(string localFallbackDirectory)
+        {
+            if (!string.IsNullOrWhiteSpace(_configuration.RemoteFilePath))
+            {
+                string explicitName = Path.GetFileName(_configuration.RemoteFilePath);
+                string explicitPath = Path.Combine(localFallbackDirectory, explicitName);
+                Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Local fallback explicit candidate path: " + explicitPath);
+
+                if (File.Exists(explicitPath))
+                {
+                    Engine.Instance.Log.Info("[OpusSwapOrderImportService] Local fallback selected explicit file: " + explicitPath);
+                    return explicitPath;
+                }
+
+                Engine.Instance.Log.Warn("[OpusSwapOrderImportService] Local fallback explicit file not found. Falling back to pattern selection. Path: " + explicitPath);
+            }
+
+            string effectivePattern = string.IsNullOrWhiteSpace(_configuration.FilePattern)
+                ? "*"
+                : _configuration.FilePattern;
+
+            Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Local fallback pattern selection using pattern: " + effectivePattern);
+
+            string[] candidates = Directory
+                .GetFiles(localFallbackDirectory, effectivePattern, SearchOption.TopDirectoryOnly)
+                .OrderByDescending(path => File.GetLastWriteTimeUtc(path))
+                .ToArray();
+
+            Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Local fallback pattern candidate count: " + candidates.Length);
+
+            if (candidates.Length == 0)
+            {
+                throw new FileNotFoundException(
+                    "No local fallback order file matched the configured pattern.",
+                    effectivePattern);
+            }
+
+            string selected = candidates[0];
+            Engine.Instance.Log.Info("[OpusSwapOrderImportService] Local fallback selected latest matching file: " + selected);
+            return selected;
+        }
+
+        private static string ResolvePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return path;
+
+            if (Path.IsPathRooted(path))
+            {
+                Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Resolved absolute local fallback path: " + path);
+                return path;
+            }
+
+            string resolvedPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
+            Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Resolved relative local fallback path to: " + resolvedPath);
+            return resolvedPath;
+        }
+
         private T ExecuteWithCircuitBreaker<T>(Func<T> operation, string operationName)
         {
             try
             {
+                Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Executing circuit-breaker protected operation: " + operationName);
                 return _orderImportCircuitBreaker.ExecuteAsync(
                     () => Task.FromResult(operation())).GetAwaiter().GetResult();
             }
@@ -154,6 +306,7 @@ namespace Puma.MDE.OPUS.OrderImport
         {
             try
             {
+                Engine.Instance.Log.Debug("[OpusSwapOrderImportService] Executing retry + circuit-breaker protected operation: " + operationName);
                 return _orderImportCircuitBreaker.ExecuteAsync(
                     () => Task.FromResult(
                         OpusOrderImportRetryExecutor.ImportRetryExecute(operation, operationName, _retryPolicy)))
@@ -174,6 +327,25 @@ namespace Puma.MDE.OPUS.OrderImport
                 || ex is IOException
                 || ex is SocketException
                 || ex is TimeoutException;
+        }
+
+        private static bool IsTemporarilyUnavailableFailure(Exception ex)
+        {
+            if (ex == null)
+                return false;
+
+            if (ex is CircuitBreakerOpenException)
+                return true;
+
+            if (ex is InvalidOperationException &&
+                ex.Message != null &&
+                ex.Message.IndexOf("temporarily unavailable", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
+            if (ex.InnerException != null)
+                return IsTemporarilyUnavailableFailure(ex.InnerException);
+
+            return false;
         }
     }
 }

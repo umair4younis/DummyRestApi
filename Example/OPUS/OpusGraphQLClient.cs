@@ -27,7 +27,7 @@ namespace Puma.MDE.OPUS
             _httpClient = new HttpClient(
                 opusHttpClientHandler?._opusHttpClientHandler ?? new HttpClientHandler())
                     ?? throw new ArgumentNullException("httpClient");
-            _opusCircuitBreaker = new OpusCircuitBreaker("Opus.GraphQL.CircuitBreaker");
+            _opusCircuitBreaker = new OpusCircuitBreaker();
         }
 
         public static OpusOperationResult<OpusGraphQLClient> TryCreate(

@@ -459,10 +459,111 @@ namespace Puma.MDE.Tests
             Assert.AreEqual(2, (int)retriesField.GetValue(breaker));
         }
 
+        [TestMethod]
+        public void Service_GetFullUnwindOrder_Uses_LocalFallback_When_SftpDownload_Fails()
+        {
+            string fallbackDirectory = CreateTemporaryDirectory();
+            string olderFilePath = Path.Combine(fallbackDirectory, "SwapRawOrder_older.csv");
+            string newerFilePath = Path.Combine(fallbackDirectory, "SwapRawOrder_newer.csv");
+
+            File.WriteAllText(olderFilePath, "older");
+            File.WriteAllText(newerFilePath, "newer");
+            File.SetLastWriteTimeUtc(olderFilePath, DateTime.UtcNow.AddMinutes(-5));
+            File.SetLastWriteTimeUtc(newerFilePath, DateTime.UtcNow.AddMinutes(-1));
+
+            try
+            {
+                OpusSftpOrderImportConfiguration configuration = new OpusSftpOrderImportConfiguration
+                {
+                    LocalFallbackDirectory = fallbackDirectory,
+                    FilePattern = "SwapRawOrder*.csv"
+                };
+
+                string parsedFileName = null;
+                string parsedContent = null;
+                OpusSwapOrderImportService service = new OpusSwapOrderImportService(
+                    configuration,
+                    cfg => { throw new IOException("simulated sftp failure"); },
+                    (content, fileName, selectedAccount, cfg) =>
+                    {
+                        parsedFileName = fileName;
+                        parsedContent = Encoding.UTF8.GetString(content ?? new byte[0]);
+                        return new SwapRawOrder
+                        {
+                            AccountName = selectedAccount.AccountName,
+                            Type = TypeManastOrder.Transaction
+                        };
+                    },
+                    new NoopImportGateway());
+
+                SwapRawOrder fullUnwind;
+                service.GetFullUnwindOrder(new SwapAccount { AccountName = "ACC-FB", Currency = "EUR" }, out fullUnwind);
+
+                Assert.AreEqual("SwapRawOrder_newer.csv", parsedFileName);
+                Assert.AreEqual("newer", parsedContent);
+                Assert.AreEqual("ACC-FB", fullUnwind.AccountName);
+            }
+            finally
+            {
+                if (Directory.Exists(fallbackDirectory))
+                    Directory.Delete(fallbackDirectory, true);
+            }
+        }
+
+        [TestMethod]
+        public void Service_GetFullUnwindOrder_Uses_LocalFallback_When_SftpReturns_EmptyFile()
+        {
+            string fallbackDirectory = CreateTemporaryDirectory();
+            string fallbackFilePath = Path.Combine(fallbackDirectory, "SwapRawOrder.csv");
+            File.WriteAllText(fallbackFilePath, "fallback-content");
+
+            try
+            {
+                OpusSftpOrderImportConfiguration configuration = new OpusSftpOrderImportConfiguration
+                {
+                    LocalFallbackDirectory = fallbackDirectory,
+                    FilePattern = "SwapRawOrder*.csv"
+                };
+
+                string parsedContent = null;
+                OpusSwapOrderImportService service = new OpusSwapOrderImportService(
+                    configuration,
+                    cfg => new DownloadedOrderFile { FileName = "empty.csv", RemotePath = "/orders/empty.csv", Content = new byte[0] },
+                    (content, fileName, selectedAccount, cfg) =>
+                    {
+                        parsedContent = Encoding.UTF8.GetString(content ?? new byte[0]);
+                        return new SwapRawOrder
+                        {
+                            AccountName = selectedAccount.AccountName,
+                            Type = TypeManastOrder.Transaction
+                        };
+                    },
+                    new NoopImportGateway());
+
+                SwapRawOrder fullUnwind;
+                service.GetFullUnwindOrder(new SwapAccount { AccountName = "ACC-FB2", Currency = "EUR" }, out fullUnwind);
+
+                Assert.AreEqual("fallback-content", parsedContent);
+                Assert.AreEqual("ACC-FB2", fullUnwind.AccountName);
+            }
+            finally
+            {
+                if (Directory.Exists(fallbackDirectory))
+                    Directory.Delete(fallbackDirectory, true);
+            }
+        }
+
         private static string CreateTemporaryFile(string content)
         {
             string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".tmp");
             File.WriteAllText(path, content ?? string.Empty);
+            return path;
+        }
+
+        private static string CreateTemporaryDirectory()
+        {
+            string path = Path.Combine(Path.GetTempPath(), "OpusOrderImportFallback_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(path);
             return path;
         }
 

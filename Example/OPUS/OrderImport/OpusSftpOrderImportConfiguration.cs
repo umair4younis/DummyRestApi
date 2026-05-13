@@ -2,12 +2,15 @@
 using Puma.MDE.OPUS.Models;
 using System;
 using System.Configuration;
+using System.IO;
 
 
 namespace Puma.MDE.OPUS.OrderImport
 {
     public class OpusSftpOrderImportConfiguration
     {
+        private const string OrderImportPrefix = "Opus.OrderImport";
+
         public string Host { get; set; }
 
         public int Port { get; set; }
@@ -29,6 +32,8 @@ namespace Puma.MDE.OPUS.OrderImport
         public string PrivateKeyPath { get; set; }
 
         public string PrivateKeyPassphrase { get; set; }
+
+        public string LocalFallbackDirectory { get; set; }
 
         public string SheetName { get; set; }
 
@@ -69,6 +74,7 @@ namespace Puma.MDE.OPUS.OrderImport
             CircuitBreakerBreakSeconds = 30;
             CircuitBreakerRetries = 0;
             ExpectKeyboardInteractiveAuth = false;
+            LocalFallbackDirectory = Path.Combine("OPUS", "OrderImportFallback");
         }
 
         public static OpusSftpOrderImportConfiguration FromAppSettings()
@@ -88,6 +94,7 @@ namespace Puma.MDE.OPUS.OrderImport
                 ExpectKeyboardInteractiveAuth = AppSettings.GetAs("Opus.Sftp.ExpectKeyboardInteractiveAuth", bool.Parse, false),
                 PrivateKeyPath = AppSettings.Get("Opus.Sftp.PrivateKeyPath"),
                 PrivateKeyPassphrase = AppSettings.Get("Opus.Sftp.PrivateKeyPassphrase"),
+                LocalFallbackDirectory = AppSettings.Get("Opus.OrderImport.LocalFallbackDirectory", Path.Combine("OPUS", "OrderImportFallback")),
                 SheetName = AppSettings.Get("Opus.OrderImport.SheetName"),
                 HeaderRowIndex = Math.Max(1, AppSettings.GetInt("Opus.OrderImport.HeaderRowIndex", 1)),
                 DefaultCurrency = AppSettings.Get("Opus.OrderImport.DefaultCurrency"),
@@ -96,21 +103,21 @@ namespace Puma.MDE.OPUS.OrderImport
                 DefaultContractSize = AppSettings.GetAs("Opus.OrderImport.DefaultContractSize", ParseDouble, 1.0),
                 RetryPolicy = new RetryPolicy
                 {
-                    MaxRetries = Math.Max(1, AppSettings.GetInt("Opus.OrderImport.Retry.MaxRetries", 3)),
-                    BaseDelayMs = Math.Max(0, AppSettings.GetInt("Opus.OrderImport.Retry.BaseDelayMs", 1000)),
-                    BackoffFactor = AppSettings.GetAs("Opus.OrderImport.Retry.BackoffFactor", ParseDouble, 2.0),
-                    JitterMaxFactor = AppSettings.GetAs("Opus.OrderImport.Retry.JitterMaxFactor", ParseDouble, 0.5)
+                    MaxRetries = Math.Max(1, GetOrderImportInt("MaxRetries", "Retry.MaxRetries", 3)),
+                    BaseDelayMs = Math.Max(0, GetOrderImportInt("BaseDelayMs", "Retry.BaseDelayMs", 1000)),
+                    BackoffFactor = GetOrderImportDouble("BackoffFactor", "Retry.BackoffFactor", 2.0),
+                    JitterMaxFactor = GetOrderImportDouble("JitterMaxFactor", "Retry.JitterMaxFactor", 0.5)
                 },
-                CircuitBreakerFailureThreshold = Math.Max(1, AppSettings.GetInt("Opus.OrderImport.CircuitBreaker.FailureThreshold", 3)),
-                CircuitBreakerBreakSeconds = Math.Max(1, AppSettings.GetInt("Opus.OrderImport.CircuitBreaker.BreakSeconds", 30)),
-                CircuitBreakerRetries = Math.Max(0, AppSettings.GetInt("Opus.OrderImport.CircuitBreaker.Retries", 0))
+                CircuitBreakerFailureThreshold = Math.Max(1, GetOrderImportInt("FailureThreshold", "CircuitBreaker.FailureThreshold", 3)),
+                CircuitBreakerBreakSeconds = Math.Max(1, GetOrderImportInt("BreakSeconds", "CircuitBreaker.BreakSeconds", 30)),
+                CircuitBreakerRetries = Math.Max(0, GetOrderImportInt("CircuitBreakerRetries", "CircuitBreaker.Retries", 0))
             };
 
             configuration.DefaultOrderType = ParseEnum(AppSettings.Get("Opus.OrderImport.Type"), TypeManastOrder.Transaction);
             configuration.DefaultUpdatePoolUpon = ParseEnum(AppSettings.Get("Opus.OrderImport.UpdatePoolUpon"), TypeManastUpdatePoolUpon.eDoNotUpdate);
 
             Engine.Instance.Log.Info(string.Format(
-                "[OpusSftpOrderImportConfiguration] Loaded config. Host={0}, Port={1}, RemoteDirectorySet={2}, RemoteFilePathSet={3}, FilePattern={4}, SheetName={5}, HeaderRowIndex={6}, AuthModes={7}, CBThreshold={8}, CBBreakSeconds={9}, CBRetries={10}",
+                "[OpusSftpOrderImportConfiguration] Loaded config. Host={0}, Port={1}, RemoteDirectorySet={2}, RemoteFilePathSet={3}, FilePattern={4}, SheetName={5}, HeaderRowIndex={6}, LocalFallbackDirectory={7}, AuthModes={8}, Retry(Max={9},BaseDelayMs={10},Backoff={11},Jitter={12}), CBThreshold={13}, CBBreakSeconds={14}, CBRetries={15}",
                 configuration.Host,
                 configuration.Port,
                 !string.IsNullOrWhiteSpace(configuration.RemoteDirectory),
@@ -118,7 +125,12 @@ namespace Puma.MDE.OPUS.OrderImport
                 configuration.FilePattern,
                 string.IsNullOrWhiteSpace(configuration.SheetName) ? "<default>" : configuration.SheetName,
                 configuration.HeaderRowIndex,
+                configuration.LocalFallbackDirectory,
                 BuildAuthModesLabel(configuration),
+                configuration.RetryPolicy.MaxRetries,
+                configuration.RetryPolicy.BaseDelayMs,
+                configuration.RetryPolicy.BackoffFactor,
+                configuration.RetryPolicy.JitterMaxFactor,
                 configuration.CircuitBreakerFailureThreshold,
                 configuration.CircuitBreakerBreakSeconds,
                 configuration.CircuitBreakerRetries));
@@ -163,20 +175,20 @@ namespace Puma.MDE.OPUS.OrderImport
 
             if (CircuitBreakerFailureThreshold < 1)
             {
-                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreaker.FailureThreshold must be >= 1.");
-                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreaker.FailureThreshold must be >= 1.");
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.FailureThreshold must be >= 1.");
+                throw new ConfigurationErrorsException("Opus.OrderImport.FailureThreshold must be >= 1.");
             }
 
             if (CircuitBreakerBreakSeconds < 1)
             {
-                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreaker.BreakSeconds must be >= 1.");
-                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreaker.BreakSeconds must be >= 1.");
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.BreakSeconds must be >= 1.");
+                throw new ConfigurationErrorsException("Opus.OrderImport.BreakSeconds must be >= 1.");
             }
 
             if (CircuitBreakerRetries < 0)
             {
-                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreaker.Retries must be >= 0.");
-                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreaker.Retries must be >= 0.");
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Validation failed: Opus.OrderImport.CircuitBreakerRetries must be >= 0.");
+                throw new ConfigurationErrorsException("Opus.OrderImport.CircuitBreakerRetries must be >= 0.");
             }
 
             Engine.Instance.Log.Debug("[OpusSftpOrderImportConfiguration] Configuration validation passed.");
@@ -206,17 +218,76 @@ namespace Puma.MDE.OPUS.OrderImport
         private static TEnum ParseEnum<TEnum>(string value, TEnum fallback) where TEnum : struct
         {
             if (string.IsNullOrWhiteSpace(value))
+            {
+                Engine.Instance.Log.Debug(string.Format(
+                    "[OpusSftpOrderImportConfiguration] Enum value not provided for {0}. Using fallback={1}.",
+                    typeof(TEnum).Name,
+                    fallback));
                 return fallback;
+            }
 
             TEnum parsed;
-            return Enum.TryParse(value, true, out parsed) ? parsed : fallback;
+            if (Enum.TryParse(value, true, out parsed))
+                return parsed;
+
+            Engine.Instance.Log.Warn(string.Format(
+                "[OpusSftpOrderImportConfiguration] Unable to parse enum value '{0}' for {1}. Using fallback={2}.",
+                value,
+                typeof(TEnum).Name,
+                fallback));
+            return fallback;
+        }
+
+        private static int GetOrderImportInt(string simplifiedKeySuffix, string legacyKeySuffix, int fallback)
+        {
+            string simplifiedKey = OrderImportPrefix + "." + simplifiedKeySuffix;
+            string legacyKey = OrderImportPrefix + "." + legacyKeySuffix;
+
+            bool hasSimplified = ConfigurationManager.AppSettings[simplifiedKey] != null;
+            bool hasLegacy = ConfigurationManager.AppSettings[legacyKey] != null;
+
+            int value = AppSettings.GetInt(simplifiedKey, AppSettings.GetInt(legacyKey, fallback));
+            string source = hasSimplified ? simplifiedKey : (hasLegacy ? legacyKey : "default");
+
+            Engine.Instance.Log.Debug(string.Format(
+                "[OpusSftpOrderImportConfiguration] Resolved int setting {0}/{1} from {2} with value={3}.",
+                simplifiedKey,
+                legacyKey,
+                source,
+                value));
+
+            return value;
+        }
+
+        private static double GetOrderImportDouble(string simplifiedKeySuffix, string legacyKeySuffix, double fallback)
+        {
+            string simplifiedKey = OrderImportPrefix + "." + simplifiedKeySuffix;
+            string legacyKey = OrderImportPrefix + "." + legacyKeySuffix;
+
+            bool hasSimplified = ConfigurationManager.AppSettings[simplifiedKey] != null;
+            bool hasLegacy = ConfigurationManager.AppSettings[legacyKey] != null;
+
+            double value = AppSettings.GetAs(simplifiedKey, ParseDouble, AppSettings.GetAs(legacyKey, ParseDouble, fallback));
+            string source = hasSimplified ? simplifiedKey : (hasLegacy ? legacyKey : "default");
+
+            Engine.Instance.Log.Debug(string.Format(
+                "[OpusSftpOrderImportConfiguration] Resolved double setting {0}/{1} from {2} with value={3}.",
+                simplifiedKey,
+                legacyKey,
+                source,
+                value));
+
+            return value;
         }
 
         private static double ParseDouble(string value)
         {
             double result;
             if (!double.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out result))
+            {
+                Engine.Instance.Log.Error("[OpusSftpOrderImportConfiguration] Failed to parse double value: " + value);
                 throw new FormatException("Unable to parse double value '" + value + "'.");
+            }
             return result;
         }
     }

@@ -66,7 +66,7 @@ namespace Puma.MDE.OPUS
             if (_opusGraphQLClient == null) throw new ArgumentNullException("opusGraphQLClient");
             if (_opusApiClient == null) throw new ArgumentNullException("opusApiClient");
 
-            _opusCircuitBreaker = opusCircuitBreaker ?? new OpusCircuitBreaker("Opus.WeightUpdate.CircuitBreaker");
+            _opusCircuitBreaker = opusCircuitBreaker ?? new OpusCircuitBreaker();
 
             // Initialize retry policies
             _parentValidationPolicy = new RetryPolicy
