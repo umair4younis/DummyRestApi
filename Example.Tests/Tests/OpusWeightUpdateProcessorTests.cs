@@ -4,6 +4,7 @@ using Puma.MDE.OPUS;
 using System.Collections.Generic;
 using Puma.MDE.OPUS.Tests;
 
+
 namespace Puma.MDE.Tests
 {
     /// <summary>
@@ -22,6 +23,7 @@ namespace Puma.MDE.Tests
     {
         protected OpusWeightUpdateProcessor _processor;
         protected OpusCircuitBreaker _fakeCircuitBreaker;
+        protected FakeOpusConfiguration _fakeConfig;
         protected FakeOpusGraphQLClient _fakeGraphQL;
         protected FakeOpusApiClient _fakeApi;
         protected FakeLogger _fakeLogger;
@@ -30,9 +32,9 @@ namespace Puma.MDE.Tests
         [TestInitialize]
         public void Setup()
         {
-            var fakeConfig = new FakeOpusConfiguration();
-            var fakeTokenProvider = new FakeTokenProvider(fakeConfig);
-            _fakeGraphQL = new FakeOpusGraphQLClient(null, fakeTokenProvider, fakeConfig);
+            _fakeConfig = new FakeOpusConfiguration();
+            var fakeTokenProvider = new FakeTokenProvider(_fakeConfig);
+            _fakeGraphQL = new FakeOpusGraphQLClient(null, fakeTokenProvider, _fakeConfig);
 
             _fakeApi = new FakeOpusApiClient();
             _fakeCircuitBreaker = new OpusCircuitBreaker(

@@ -21,11 +21,13 @@ namespace Puma.MDE.OPUS
         private readonly decimal _minNotional = 1_000_000m;
         private readonly OpusGraphQLClient _opusGraphQLClient;
         private readonly OpusApiClient _opusApiClient;
+        private readonly OpusConfiguration _opusConfiguration;
         public readonly OpusCircuitBreaker _opusCircuitBreaker;
 
         // Different retry policies per step
         private readonly RetryPolicy _parentValidationPolicy;
         private readonly RetryPolicy _bbgBatchPolicy;
+        private PortfolioGraphQlData _portfolioGraphQlCache;
 
         public static string ParentAssetId = string.Empty;
         public static string Currency = string.Empty;
@@ -67,6 +69,7 @@ namespace Puma.MDE.OPUS
             if (_opusApiClient == null) throw new ArgumentNullException("opusApiClient");
 
             _opusCircuitBreaker = opusCircuitBreaker ?? new OpusCircuitBreaker();
+            _opusConfiguration = _opusGraphQLClient.Configuration;
 
             // Initialize retry policies
             _parentValidationPolicy = new RetryPolicy
@@ -94,6 +97,9 @@ namespace Puma.MDE.OPUS
                 _opusCircuitBreaker.FailureThreshold,
                 _opusCircuitBreaker.BreakDurationSeconds,
                 _opusCircuitBreaker.MaxRetries));
+
+            Engine.Instance.Log.Info("[OpusWeightUpdateProcessor] GraphQL mode: " +
+                (IsAccountSegmentGraphQlFlowEnabled() ? "AccountSegmentQuery" : "LegacyQueries"));
         }
 
         /// <summary>
@@ -215,6 +221,11 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public async Task<ValidationResultOpus> ValidateAssetCompositionIdAsync()
         {
+            if (IsAccountSegmentGraphQlFlowEnabled())
+            {
+                return await ValidateAssetCompositionIdFromPortfolioQueryAsync().ConfigureAwait(false);
+            }
+
             Engine.Instance.Log.Info($"[ValidateAssetCompositionIdAsync] Starting parent asset validation for ID: {ParentAssetId}");
 
             string query = $@"
@@ -287,6 +298,11 @@ namespace Puma.MDE.OPUS
         /// </summary>
         public async Task<List<ComponentInfo>> ValidateAndCollectBbgUuidsAsync()
         {
+            if (IsAccountSegmentGraphQlFlowEnabled())
+            {
+                return await ValidateAndCollectComponentsFromPortfolioQueryAsync().ConfigureAwait(false);
+            }
+
             const int BATCH_SIZE = 6;
             List<ComponentInfo> validMappings = new List<ComponentInfo>();
             List<string> errors = new List<string>();
@@ -580,183 +596,520 @@ namespace Puma.MDE.OPUS
             return query;
         }
 
-        /// <summary>
-        /// Sends PATCH request to update parent asset composition members and weights.
-        /// </summary>
-        public async Task SendWeightUpdatePayloadPatchAsync(string parentUuid, List<ComponentInfo> components)
+        private bool IsAccountSegmentGraphQlFlowEnabled()
         {
-            Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Starting PATCH update for parent UUID: {parentUuid}");
+            bool enabled = _opusConfiguration != null && _opusConfiguration.UseAccountSegmentGraphQlQuery;
 
-            if (string.IsNullOrEmpty(parentUuid))
+            if (enabled)
             {
-                Engine.Instance.Log.Warn("[SendWeightUpdatePayloadPatchAsync] Cannot send update - parent UUID is missing");
-                return;
+                Engine.Instance.Log.Debug("[OpusWeightUpdateProcessor] Account Segment GraphQL flow is enabled by configuration.");
             }
 
-            if (components == null || components.Count == 0)
-            {
-                Engine.Instance.Log.Warn("[SendWeightUpdatePayloadPatchAsync] No components to update");
-                return;
-            }
+            return enabled;
+        }
 
-            Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Preparing PATCH payload for {components.Count} components");
+        private async Task<PortfolioGraphQlData> GetPortfolioGraphQlDataAsync(string accountSegmentIds)
+        {
+            Engine.Instance.Log.Debug("[GetPortfolioGraphQlDataAsync] Method invoked. AccountSegmentIds parameter=" + (string.IsNullOrWhiteSpace(accountSegmentIds) ? "<null/empty>" : accountSegmentIds));
 
-            // Build Asset Composition payload
-            var compositionPayload = new
+            if (string.IsNullOrWhiteSpace(accountSegmentIds))
             {
-                name = "Portfolio Composition Update",
-                members = components.Select(c => new
+                Engine.Instance.Log.Warn("[GetPortfolioGraphQlDataAsync] AccountSegmentIds parameter is null/empty. Falling back to App.config value.");
+                accountSegmentIds = _opusConfiguration?.AccountSegmentIds;
+                Engine.Instance.Log.Debug("[GetPortfolioGraphQlDataAsync] After config fallback, AccountSegmentIds=" + (string.IsNullOrWhiteSpace(accountSegmentIds) ? "<still null/empty>" : accountSegmentIds));
+
+                if (string.IsNullOrWhiteSpace(accountSegmentIds))
                 {
-                    asset = c.Uuid,
-                    unit = $"{c.Currency}/Pieces",
-                    weight = new
-                    {
-                        quantity = c.WeightPercent,
-                        unit = "%",
-                        type = "PERCENT"
+                    Engine.Instance.Log.Error("[GetPortfolioGraphQlDataAsync] AccountSegmentIds is null/empty after parameter and config fallback. Cannot proceed with portfolio query.");
+                    throw new InvalidOperationException("AccountSegmentIds parameter and App.config 'Opus.AccountSegmentIds' are both null/empty. Cannot execute portfolio GraphQL query.");
+                }
+            }
+            else
+            {
+                Engine.Instance.Log.Info("[GetPortfolioGraphQlDataAsync] Using provided parameter. AccountSegmentIds=" + accountSegmentIds);
+            }
+
+            if (_portfolioGraphQlCache != null)
+            {
+                Engine.Instance.Log.Debug("[GetPortfolioGraphQlDataAsync] Reusing cached portfolio GraphQL response. CachedPositionCount=" +
+                        (_portfolioGraphQlCache.portfolio?.portfolioPositions?.Length ?? 0));
+                return _portfolioGraphQlCache;
+            }
+
+            // Build query with provided account segment IDs parameter
+            Engine.Instance.Log.Info("[GetPortfolioGraphQlDataAsync] Building GraphQL query with AccountSegmentIds=" + accountSegmentIds);
+            string query = BuildAccountSegmentQuery(accountSegmentIds);
+            Engine.Instance.Log.Debug("[GetPortfolioGraphQlDataAsync] Query built. QueryLength=" + query.Length);
+            Engine.Instance.Log.Info("[GetPortfolioGraphQlDataAsync] Executing account segment GraphQL query. QueryLength=" + query.Length + ", AccountSegmentIds=" + accountSegmentIds);
+
+            try
+            {
+                _portfolioGraphQlCache = await _opusGraphQLClient
+                        .ExecuteAsync<PortfolioGraphQlData>(query)
+                        .ConfigureAwait(false);
+
+                Engine.Instance.Log.Debug("[GetPortfolioGraphQlDataAsync] GraphQL execution completed successfully.");
+            }
+            catch (Exception ex)
+            {
+                Engine.Instance.Log.Error("[GetPortfolioGraphQlDataAsync] GraphQL execution failed. Exception: " + ex.GetType().Name + " - " + ex.Message);
+                throw;
+            }
+
+            int positionCount = _portfolioGraphQlCache?.portfolio?.portfolioPositions == null
+                    ? 0
+                    : _portfolioGraphQlCache.portfolio.portfolioPositions.Length;
+
+            Engine.Instance.Log.Info("[GetPortfolioGraphQlDataAsync] Portfolio GraphQL response parsed. PositionCount=" + positionCount);
+
+            if (positionCount == 0)
+            {
+                Engine.Instance.Log.Warn("[GetPortfolioGraphQlDataAsync] GraphQL response contains no portfolio positions. This may indicate an issue with the account segment IDs or empty portfolio.");
+            }
+
+            return _portfolioGraphQlCache;
+        }
+
+        public string BuildAccountSegmentQuery(string accountSegmentIds)
+        {
+            Engine.Instance.Log.Debug("[BuildAccountSegmentQuery] Method invoked. AccountSegmentIds parameter=" + (string.IsNullOrWhiteSpace(accountSegmentIds) ? "<null/empty>" : accountSegmentIds));
+
+            if (string.IsNullOrWhiteSpace(accountSegmentIds))
+            {
+                Engine.Instance.Log.Error("[BuildAccountSegmentQuery] Cannot build query with null/empty AccountSegmentIds. This indicates a logic error in parameter passing.");
+                throw new ArgumentNullException(nameof(accountSegmentIds), "AccountSegmentIds cannot be null or empty when building query.");
+            }
+
+            // Parse comma-separated account segment IDs and format as array for GraphQL
+            string[] ids = accountSegmentIds.Split(new[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries);
+
+            Engine.Instance.Log.Debug("[BuildAccountSegmentQuery] Parsed " + ids.Length + " account segment ID(s) from input.");
+            for (int i = 0; i < ids.Length; i++)
+            {
+                Engine.Instance.Log.Debug("[BuildAccountSegmentQuery]   ID[" + i + "] = '" + ids[i].Trim() + "'");
+            }
+
+            string formattedIds = string.Join(", ", System.Linq.Enumerable.Select(ids, id => id.Trim()));
+            Engine.Instance.Log.Debug("[BuildAccountSegmentQuery] Formatted account segment IDs for GraphQL: [" + formattedIds + "]");
+
+            string query = @"
+{
+    portfolio(
+        accountSegments: [" + formattedIds + @"]
+        portfolioType: \"Post Booking Portfolio\"
+    ) {
+                portfolioPositions {
+                    rateable {
+                        id
+                        name
+                        __typename... on TOTALRETURNSWAP {
+                            id
+                            uuid
+                              name
+                    nominal {
+                                __typename
+                                lastValue {
+                                    quantity
+                                    unit
+                                }
+                            }
+                            mtmFromFinancing {
+                                quantity
+                                unit
+                            }
+                            swapValue {
+                                quantity
+                                unit
+                            }
+                            asset {
+                                ... on ASSETCOMPOSITION {
+                                    id
+                                    uuid
+                                    name
+                            __typename
+                                    members {
+                                        asset {
+                                            id
+                                            uuid
+                                            name
+                                    isin: symbol(type: \"ISIN\") {
+                                        identifier
+                                            }
+                                    ric: symbol(type: \"RIC\") {
+                                        identifier
+                                    }
+                                bbg: symbol(type: \"Bloomberg Reference Query\") {
+
+                                    identifier
+                                            }
+                            }
+                            weight {
+                                quantity
+                                unit
+                                }
+                            unit
+                                      }
                     }
-                }).ToArray()
+                }
+            }
+        }
+    }
+}
+}";
+                Engine.Instance.Log.Debug("[BuildAccountSegmentQuery] GraphQL query constructed successfully. QueryLength=" + query.Length);
+return query;
+        }
+
+                private PortfolioGraphQlRateable FindFirstValidTotalReturnSwap(PortfolioGraphQlData data)
+{
+    if (data?.portfolio?.portfolioPositions == null || data.portfolio.portfolioPositions.Length == 0)
+    {
+        Engine.Instance.Log.Warn("[OpusWeightUpdateProcessor] Portfolio query did not return positions.");
+        return null;
+    }
+
+    foreach (PortfolioGraphQlPosition position in data.portfolio.portfolioPositions)
+    {
+        PortfolioGraphQlRateable rateable = position?.rateable;
+        if (rateable == null)
+        {
+            continue;
+        }
+
+        if (!string.Equals(rateable.__typename, "TOTALRETURNSWAP", StringComparison.OrdinalIgnoreCase))
+        {
+            Engine.Instance.Log.Debug("[OpusWeightUpdateProcessor] Skipping non-TRS rateable type: " + rateable.__typename);
+            continue;
+        }
+
+        PortfolioGraphQlAssetComposition asset = rateable.asset;
+        if (asset == null)
+        {
+            Engine.Instance.Log.Warn("[OpusWeightUpdateProcessor] TRS rateable has no asset composition payload.");
+            continue;
+        }
+
+        if (!string.Equals(asset.__typename, "ASSETCOMPOSITION", StringComparison.OrdinalIgnoreCase))
+        {
+            Engine.Instance.Log.Warn("[OpusWeightUpdateProcessor] TRS asset type is not ASSETCOMPOSITION: " + asset.__typename);
+            continue;
+        }
+
+        if (string.IsNullOrWhiteSpace(asset.uuid))
+        {
+            Engine.Instance.Log.Warn("[OpusWeightUpdateProcessor] TRS asset composition has empty UUID.");
+            continue;
+        }
+
+        return rateable;
+    }
+
+    Engine.Instance.Log.Warn("[OpusWeightUpdateProcessor] Portfolio query did not return a valid TOTALRETURNSWAP with ASSETCOMPOSITION.");
+    return null;
+}
+
+private async Task<ValidationResultOpus> ValidateAssetCompositionIdFromPortfolioQueryAsync()
+{
+    Engine.Instance.Log.Info("[ValidateAssetCompositionIdAsync] Using portfolio GraphQL mode for parent validation.");
+
+    try
+    {
+        string accountSegmentIds = _opusConfiguration?.AccountSegmentIds;
+        Engine.Instance.Log.Debug("[ValidateAssetCompositionIdAsync] Resolved AccountSegmentIds from App.config=" + (string.IsNullOrWhiteSpace(accountSegmentIds) ? "<null/empty>" : accountSegmentIds));
+
+        if (string.IsNullOrWhiteSpace(accountSegmentIds))
+        {
+            Engine.Instance.Log.Error("[ValidateAssetCompositionIdAsync] AccountSegmentIds from App.config is null/empty. Cannot execute portfolio query.");
+            throw new InvalidOperationException("AccountSegmentIds not configured in App.config (Opus.AccountSegmentIds setting).");
+        }
+        PortfolioGraphQlData data = await GetPortfolioGraphQlDataAsync(accountSegmentIds).ConfigureAwait(false);
+        PortfolioGraphQlRateable rateable = FindFirstValidTotalReturnSwap(data);
+
+        if (rateable == null)
+        {
+            return new ValidationResultOpus
+            {
+                IsValid = false,
+                ErrorMessage = "OPUS portfolio query did not return a valid Total Return Swap asset composition."
             };
+        }
 
-            // Build Swap Delta payload
-            var deltaPayload = new SwapDeltaUpdate
+        if (rateable.nominal?.lastValue != null)
+        {
+            SwapNotional = rateable.nominal.lastValue.Quantity;
+            if (!string.IsNullOrWhiteSpace(rateable.nominal.lastValue.Unit))
             {
-                Members = components.Select(c => new SwapDeltaMember
-                {
-                    AssetId = c.Uuid,
-                    CurrentPieces = c.Nominal,
-                    CurrentWeight = c.WeightPercent
-                }).ToList()
-            };
-
-            string endpoint = $"/asset-compositions/{ParentAssetId}";
-
-            try
-            {
-                Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Sending PATCH to endpoint: {endpoint}");
-                await _opusApiClient.PatchAsync(endpoint, compositionPayload, ParentAssetId).ConfigureAwait(false);
-                Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully patched asset composition {ParentAssetId} with {components.Count} members");
-
-                Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Updating swap delta for swap ID: {parentUuid}");
-                await UpdateSwapDeltaAsync(parentUuid, deltaPayload).ConfigureAwait(false);
-                Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully updated swap in UCS service with swap id: {parentUuid} with {components.Count} members");
-            }
-            catch (ApiValidationException vex)
-            {
-                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Validation error in PATCH: {vex.Message}");
-                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response body: {vex.ResponseBody}");
-                throw;
-            }
-            catch (ApiRateLimitException rlex)
-            {
-                Engine.Instance.Log.Warn($"[SendWeightUpdatePayloadPatchAsync] Rate limited - consider delaying next attempt: {rlex.Message}");
-                throw;
-            }
-            catch (ApiRequestException aex)
-            {
-                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] API request failed ({aex.StatusCode}): {aex.Message}");
-                if (!string.IsNullOrEmpty(aex.ResponseBody))
-                    Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response details: {aex.ResponseBody}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Unexpected PATCH error: {ex.Message}");
-                Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Exception: {ex.ToString()}");
-                throw;
+                Currency = rateable.nominal.lastValue.Unit;
             }
         }
 
-        #region Swap Quote & Update Operations
-
-        #endregion
-
-        /// <summary>
-        /// Validates a Total Return Swap before performing updates (quote creation, nominal update, delta update, etc.).
-        /// Uses the strongly-typed TotalReturnSwapResponse model and returns rich validation result.
-        /// </summary>
-        /// <param name="swapId">The OPUS swap identifier (UUID)</param>
-        /// <param name="requireRecentQuote">If true, requires at least one recent quote (within ~3 days)</param>
-        /// <param name="minNotional">Optional minimum notional threshold (currently not returned by API)</param>
-        /// <returns>Detailed validation result</returns>
-        /// <summary>
-        /// Validates a Total Return Swap before performing updates.
-        /// Now uses the new full TotalReturnSwapResponse model instead of the old pagination-based one.
-        /// </summary>
-        public async Task<SwapValidationResult> ValidateSwapAsync(
-            string swapId,
-            bool requireRecentQuote = true,
-            decimal? minNotional = null)
+        if (rateable.mtmFromFinancing != null)
         {
-            if (string.IsNullOrWhiteSpace(swapId))
-                return SwapValidationResult.Failure(swapId, "Swap ID is required");
-
-            try
-            {
-                var swapResponse = await GetTotalReturnSwapAsync(swapId).ConfigureAwait(false);
-
-                if (swapResponse == null)
-                {
-                    var failure = SwapValidationResult.Failure(swapId, $"Swap {swapId} not found or returned no data");
-                    Engine.Instance.Log.Error(failure.GetSummary());
-                    return failure;
-                }
-
-                var result = SwapValidationResult.Success(swapId, swapResponse);
-                result.CurrentNotional = swapResponse.Nominal?.Quantity;
-
-                if (minNotional.HasValue && result.CurrentNotional.HasValue && result.CurrentNotional.Value < minNotional.Value)
-                {
-                    // TODO: to set valid false if needs to restrict this condition
-                    //result.IsValid = false;
-                    result.ErrorMessage += $"Notional {result.CurrentNotional.Value:N2} is below minimum {minNotional.Value:N2}. ";
-                }
-
-                // Quote validation (if required)
-                if (requireRecentQuote)
-                {
-                    // For now we assume quotes are not in root response.
-                    // If quotes are added later, update this section.
-                    result.QuoteCount = 0;
-                    result.Warnings.Add("Quote validation skipped - quotes not present in current response model.");
-                }
-
-                Engine.Instance.Log.Info(result.GetSummary());
-
-                foreach (var warning in result.Warnings)
-                {
-                    Engine.Instance.Log.Warn($"Swap {swapId} validation warning: {warning}");
-                }
-
-                return result;
-            }
-            catch (ApiNotFoundException)
-            {
-                var failure = SwapValidationResult.Failure(swapId, $"Swap {swapId} not found (404)");
-                Engine.Instance.Log.Error(failure.GetSummary());
-                return failure;
-            }
-            catch (Exception ex)
-            {
-                var failure = SwapValidationResult.Failure(swapId, $"Validation failed: {ex.Message}");
-                Engine.Instance.Log.Error(failure.GetSummary());
-                return failure;
-            }
+            MtmFromFinancing = rateable.mtmFromFinancing.Quantity;
         }
 
-        /// <summary>
-        /// Circuit-breaker protected execution: validates parent, collects BBG data, 
-        /// updates weights, and logs metrics.
-        /// </summary>
-        public async Task ExecuteAsync_CircuitBreaker()
+        if (rateable.swapValue != null)
         {
-            try
+            SwapValue = rateable.swapValue.Quantity;
+        }
+
+        if (string.IsNullOrWhiteSpace(ParentAssetId) && rateable.asset.id > 0)
+        {
+            ParentAssetId = rateable.asset.id.ToString();
+        }
+
+        Engine.Instance.Log.Info($"[ValidateAssetCompositionIdAsync] Portfolio query selected asset composition: {rateable.asset.name} ({rateable.asset.uuid})");
+        Engine.Instance.Log.Debug($"[ValidateAssetCompositionIdAsync] Captured swap fields. Nominal={SwapNotional}, Currency={Currency}, MtmFromFinancing={MtmFromFinancing}, SwapValue={SwapValue}");
+
+        return new ValidationResultOpus
+        {
+            IsValid = true,
+            AssetName = rateable.asset.name,
+            AssetUuid = rateable.asset.uuid
+        };
+    }
+    catch (Exception ex)
+    {
+        Engine.Instance.Log.Error("[ValidateAssetCompositionIdAsync] Portfolio query validation failed: " + ex);
+        throw;
+    }
+}
+
+private async Task<List<ComponentInfo>> ValidateAndCollectComponentsFromPortfolioQueryAsync()
+{
+    Engine.Instance.Log.Info("[ValidateAndCollectBbgUuidsAsync] Using portfolio GraphQL mode for component extraction.");
+
+    string accountSegmentIds = _opusConfiguration?.AccountSegmentIds;
+    Engine.Instance.Log.Debug("[ValidateAndCollectBbgUuidsAsync] Resolved AccountSegmentIds from App.config=" + (string.IsNullOrWhiteSpace(accountSegmentIds) ? "<null/empty>" : accountSegmentIds));
+
+    if (string.IsNullOrWhiteSpace(accountSegmentIds))
+    {
+        Engine.Instance.Log.Error("[ValidateAndCollectBbgUuidsAsync] AccountSegmentIds from App.config is null/empty. Cannot execute portfolio query.");
+        throw new InvalidOperationException("AccountSegmentIds not configured in App.config (Opus.AccountSegmentIds setting).");
+    }
+    PortfolioGraphQlData data = await GetPortfolioGraphQlDataAsync(accountSegmentIds).ConfigureAwait(false);
+    PortfolioGraphQlRateable rateable = FindFirstValidTotalReturnSwap(data);
+    List<ComponentInfo> components = new List<ComponentInfo>();
+
+    if (rateable?.asset?.members == null || rateable.asset.members.Length == 0)
+    {
+        Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] Portfolio composition has no members.");
+        return components;
+    }
+
+    foreach (PortfolioGraphQlMember member in rateable.asset.members)
+    {
+        string memberUuid = member?.asset?.uuid;
+        string bbg = member?.asset?.bbg?.identifier;
+
+        if (string.IsNullOrWhiteSpace(memberUuid))
+        {
+            Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] Skipping member with empty UUID.");
+            continue;
+        }
+
+        if (string.IsNullOrWhiteSpace(bbg))
+        {
+            Engine.Instance.Log.Warn("[ValidateAndCollectBbgUuidsAsync] Skipping member with empty BBG identifier. MemberUuid=" + memberUuid);
+            continue;
+        }
+
+        decimal weight = member.weight == null ? 0m : member.weight.Quantity;
+        string unit = string.IsNullOrWhiteSpace(member.unit) ? Currency : member.unit;
+
+        components.Add(new ComponentInfo
+        {
+            BbgTicker = bbg,
+            Uuid = memberUuid,
+            WeightPercent = weight,
+            Nominal = 0m,
+            Currency = unit
+        });
+
+        Engine.Instance.Log.Info("[ValidateAndCollectBbgUuidsAsync] Portfolio member mapped: " + bbg + " -> " + memberUuid + " (Weight=" + weight + ")");
+    }
+
+    Engine.Instance.Log.Info("[ValidateAndCollectBbgUuidsAsync] Portfolio mode extracted components count=" + components.Count);
+    return components;
+}
+
+/// <summary>
+/// Sends PATCH request to update parent asset composition members and weights.
+/// </summary>
+public async Task SendWeightUpdatePayloadPatchAsync(string parentUuid, List<ComponentInfo> components)
+{
+    Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Starting PATCH update for parent UUID: {parentUuid}");
+
+    if (string.IsNullOrEmpty(parentUuid))
+    {
+        Engine.Instance.Log.Warn("[SendWeightUpdatePayloadPatchAsync] Cannot send update - parent UUID is missing");
+        return;
+    }
+
+    if (components == null || components.Count == 0)
+    {
+        Engine.Instance.Log.Warn("[SendWeightUpdatePayloadPatchAsync] No components to update");
+        return;
+    }
+
+    Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Preparing PATCH payload for {components.Count} components");
+
+    // Build Asset Composition payload
+    var compositionPayload = new
+    {
+        name = "Portfolio Composition Update",
+        members = components.Select(c => new
+        {
+            asset = c.Uuid,
+            unit = $"{c.Currency}/Pieces",
+            weight = new
             {
-                // ── Step 1: Validate parent asset composition (GraphQL call) ───────────
-                ValidationResultOpus validationResult = await _opusCircuitBreaker.ExecuteAsync(
-                    async () =>
-                    {
-                        string query = @"
+                quantity = c.WeightPercent,
+                unit = "%",
+                type = "PERCENT"
+            }
+        }).ToArray()
+    };
+
+    // Build Swap Delta payload
+    var deltaPayload = new SwapDeltaUpdate
+    {
+        Members = components.Select(c => new SwapDeltaMember
+        {
+            AssetId = c.Uuid,
+            CurrentPieces = c.Nominal,
+            CurrentWeight = c.WeightPercent
+        }).ToList()
+    };
+
+    string endpoint = $"/asset-compositions/{ParentAssetId}";
+
+    try
+    {
+        Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Sending PATCH to endpoint: {endpoint}");
+        await _opusApiClient.PatchAsync(endpoint, compositionPayload, ParentAssetId).ConfigureAwait(false);
+        Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully patched asset composition {ParentAssetId} with {components.Count} members");
+
+        Engine.Instance.Log.Debug($"[SendWeightUpdatePayloadPatchAsync] Updating swap delta for swap ID: {parentUuid}");
+        await UpdateSwapDeltaAsync(parentUuid, deltaPayload).ConfigureAwait(false);
+        Engine.Instance.Log.Info($"[SendWeightUpdatePayloadPatchAsync] Successfully updated swap in UCS service with swap id: {parentUuid} with {components.Count} members");
+    }
+    catch (ApiValidationException vex)
+    {
+        Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Validation error in PATCH: {vex.Message}");
+        Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response body: {vex.ResponseBody}");
+        throw;
+    }
+    catch (ApiRateLimitException rlex)
+    {
+        Engine.Instance.Log.Warn($"[SendWeightUpdatePayloadPatchAsync] Rate limited - consider delaying next attempt: {rlex.Message}");
+        throw;
+    }
+    catch (ApiRequestException aex)
+    {
+        Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] API request failed ({aex.StatusCode}): {aex.Message}");
+        if (!string.IsNullOrEmpty(aex.ResponseBody))
+            Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Response details: {aex.ResponseBody}");
+        throw;
+    }
+    catch (Exception ex)
+    {
+        Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Unexpected PATCH error: {ex.Message}");
+        Engine.Instance.Log.Error($"[SendWeightUpdatePayloadPatchAsync] Exception: {ex.ToString()}");
+        throw;
+    }
+}
+
+#region Swap Quote & Update Operations
+
+#endregion
+
+/// <summary>
+/// Validates a Total Return Swap before performing updates (quote creation, nominal update, delta update, etc.).
+/// Uses the strongly-typed TotalReturnSwapResponse model and returns rich validation result.
+/// </summary>
+/// <param name="swapId">The OPUS swap identifier (UUID)</param>
+/// <param name="requireRecentQuote">If true, requires at least one recent quote (within ~3 days)</param>
+/// <param name="minNotional">Optional minimum notional threshold (currently not returned by API)</param>
+/// <returns>Detailed validation result</returns>
+/// <summary>
+/// Validates a Total Return Swap before performing updates.
+/// Now uses the new full TotalReturnSwapResponse model instead of the old pagination-based one.
+/// </summary>
+public async Task<SwapValidationResult> ValidateSwapAsync(
+    string swapId,
+    bool requireRecentQuote = true,
+    decimal? minNotional = null)
+{
+    if (string.IsNullOrWhiteSpace(swapId))
+        return SwapValidationResult.Failure(swapId, "Swap ID is required");
+
+    try
+    {
+        var swapResponse = await GetTotalReturnSwapAsync(swapId).ConfigureAwait(false);
+
+        if (swapResponse == null)
+        {
+            var failure = SwapValidationResult.Failure(swapId, $"Swap {swapId} not found or returned no data");
+            Engine.Instance.Log.Error(failure.GetSummary());
+            return failure;
+        }
+
+        var result = SwapValidationResult.Success(swapId, swapResponse);
+        result.CurrentNotional = swapResponse.Nominal?.Quantity;
+
+        if (minNotional.HasValue && result.CurrentNotional.HasValue && result.CurrentNotional.Value < minNotional.Value)
+        {
+            // TODO: to set valid false if needs to restrict this condition
+            //result.IsValid = false;
+            result.ErrorMessage += $"Notional {result.CurrentNotional.Value:N2} is below minimum {minNotional.Value:N2}. ";
+        }
+
+        // Quote validation (if required)
+        if (requireRecentQuote)
+        {
+            // For now we assume quotes are not in root response.
+            // If quotes are added later, update this section.
+            result.QuoteCount = 0;
+            result.Warnings.Add("Quote validation skipped - quotes not present in current response model.");
+        }
+
+        Engine.Instance.Log.Info(result.GetSummary());
+
+        foreach (var warning in result.Warnings)
+        {
+            Engine.Instance.Log.Warn($"Swap {swapId} validation warning: {warning}");
+        }
+
+        return result;
+    }
+    catch (ApiNotFoundException)
+    {
+        var failure = SwapValidationResult.Failure(swapId, $"Swap {swapId} not found (404)");
+        Engine.Instance.Log.Error(failure.GetSummary());
+        return failure;
+    }
+    catch (Exception ex)
+    {
+        var failure = SwapValidationResult.Failure(swapId, $"Validation failed: {ex.Message}");
+        Engine.Instance.Log.Error(failure.GetSummary());
+        return failure;
+    }
+}
+
+/// <summary>
+/// Circuit-breaker protected execution: validates parent, collects BBG data, 
+/// updates weights, and logs metrics.
+/// </summary>
+public async Task ExecuteAsync_CircuitBreaker()
+{
+    try
+    {
+        // ── Step 1: Validate parent asset composition (GraphQL call) ───────────
+        ValidationResultOpus validationResult = await _opusCircuitBreaker.ExecuteAsync(
+            async () =>
+            {
+                string query = @"
                     {
                       assets(range: {offset: 0, size: 1000}) 
                       filter: {
@@ -767,150 +1120,150 @@ namespace Puma.MDE.OPUS
                       }
                     }";
 
-                        AssetsQueryResponse response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query).ConfigureAwait(false);
+                AssetsQueryResponse response = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(query).ConfigureAwait(false);
 
-                        AssetNode node = response?.assets?.edges?.FirstOrDefault()?.node;
+                AssetNode node = response?.assets?.edges?.FirstOrDefault()?.node;
 
-                        if (node == null)
-                            return new ValidationResultOpus { IsValid = false, ErrorMessage = "No asset found" };
+                if (node == null)
+                    return new ValidationResultOpus { IsValid = false, ErrorMessage = "No asset found" };
 
-                        if (string.IsNullOrWhiteSpace(node.uuid))
-                            return new ValidationResultOpus { IsValid = false, AssetName = node.name, ErrorMessage = "UUID missing" };
+                if (string.IsNullOrWhiteSpace(node.uuid))
+                    return new ValidationResultOpus { IsValid = false, AssetName = node.name, ErrorMessage = "UUID missing" };
 
-                        if (node.__typename != "ASSETCOMPOSITION")
-                            return new ValidationResultOpus { IsValid = false, AssetName = node.name, AssetUuid = node.uuid, ErrorMessage = "Invalid type" };
+                if (node.__typename != "ASSETCOMPOSITION")
+                    return new ValidationResultOpus { IsValid = false, AssetName = node.name, AssetUuid = node.uuid, ErrorMessage = "Invalid type" };
 
-                        return new ValidationResultOpus { IsValid = true, AssetName = node.name, AssetUuid = node.uuid };
-                    }).ConfigureAwait(false);
+                return new ValidationResultOpus { IsValid = true, AssetName = node.name, AssetUuid = node.uuid };
+            }).ConfigureAwait(false);
 
-                if (!validationResult.IsValid)
+        if (!validationResult.IsValid)
+        {
+            Engine.Instance.Log.Warn("Validation failed: " + validationResult.ErrorMessage);
+            return;
+        }
+
+        string parentUuid = validationResult.AssetUuid;
+        Engine.Instance.Log.Info("Step 1 complete - Parent UUID: " + parentUuid);
+
+        // ── Step 2: Validate and collect BBG UUIDs (multiple GraphQL batch calls) ──
+        List<ComponentInfo> validComponents = await _opusCircuitBreaker.ExecuteAsync(
+            async () =>
+            {
+                // Here we simulate/wrap the full Step 2 logic (batch processing)
+                // In real code, this would call ValidateAndCollectBbgUuidsAsync() from earlier
+                List<ComponentInfo> components = new List<ComponentInfo>();
+                List<string> allTickers = new List<string>();
+
+                foreach (ReportHolding holding in ReportHoldings)
                 {
-                    Engine.Instance.Log.Warn("Validation failed: " + validationResult.ErrorMessage);
-                    return;
+                    components.Add(new ComponentInfo() { BbgTicker = holding.BbgTicker, WeightPercent = holding.MarketWeightPercent });
                 }
 
-                string parentUuid = validationResult.AssetUuid;
-                Engine.Instance.Log.Info("Step 1 complete - Parent UUID: " + parentUuid);
+                string batchQuery = BuildBbgFilterQuery(components?.Select(component => component.BbgTicker)?.ToList());
+                AssetsQueryResponse batchResponse1 = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(batchQuery).ConfigureAwait(false);
 
-                // ── Step 2: Validate and collect BBG UUIDs (multiple GraphQL batch calls) ──
-                List<ComponentInfo> validComponents = await _opusCircuitBreaker.ExecuteAsync(
-                    async () =>
-                    {
-                        // Here we simulate/wrap the full Step 2 logic (batch processing)
-                        // In real code, this would call ValidateAndCollectBbgUuidsAsync() from earlier
-                        List<ComponentInfo> components = new List<ComponentInfo>();
-                        List<string> allTickers = new List<string>();
+                return components;
+            }).ConfigureAwait(false);
 
-                        foreach (ReportHolding holding in ReportHoldings)
-                        {
-                            components.Add(new ComponentInfo() { BbgTicker = holding.BbgTicker, WeightPercent = holding.MarketWeightPercent });
-                        }
+        if (validComponents.Count == 0)
+        {
+            Engine.Instance.Log.Info("Step 2 failed - No valid components");
+            return;
+        }
 
-                        string batchQuery = BuildBbgFilterQuery(components?.Select(component => component.BbgTicker)?.ToList());
-                        AssetsQueryResponse batchResponse1 = await _opusGraphQLClient.ExecuteAsync<AssetsQueryResponse>(batchQuery).ConfigureAwait(false);
+        Engine.Instance.Log.Info("Step 2 complete - Valid components: " + validComponents.Count);
 
-                        return components;
-                    }).ConfigureAwait(false);
-
-                if (validComponents.Count == 0)
+        // ── Step 3: POST call to update weights ────────────────────────────────
+        await _opusCircuitBreaker.ExecuteAsync(
+            async () =>
+            {
+                // Build payload
+                object payload = new
                 {
-                    Engine.Instance.Log.Info("Step 2 failed - No valid components");
-                    return;
-                }
-
-                Engine.Instance.Log.Info("Step 2 complete - Valid components: " + validComponents.Count);
-
-                // ── Step 3: POST call to update weights ────────────────────────────────
-                await _opusCircuitBreaker.ExecuteAsync(
-                    async () =>
+                    assetCompositionId = ParentAssetId,
+                    parentUuid = parentUuid,
+                    components = validComponents.ConvertAll(c => new
                     {
-                        // Build payload
-                        object payload = new
-                        {
-                            assetCompositionId = ParentAssetId,
-                            parentUuid = parentUuid,
-                            components = validComponents.ConvertAll(c => new
-                            {
-                                childUuid = c.Uuid,
-                                weight = new { value = c.WeightPercent, unit = "%" },
-                                quantity = c.WeightPercent,
-                                reference = c.BbgTicker
-                            }).ToArray()
-                        };
+                        childUuid = c.Uuid,
+                        weight = new { value = c.WeightPercent, unit = "%" },
+                        quantity = c.WeightPercent,
+                        reference = c.BbgTicker
+                    }).ToArray()
+                };
 
-                        await _opusApiClient.PostAsync("/api/asset-compositions/update-weights", payload).ConfigureAwait(false);
+                await _opusApiClient.PostAsync("/api/asset-compositions/update-weights", payload).ConfigureAwait(false);
 
-                        Engine.Instance.Log.Info("Step 3 complete - Weights updated successfully");
+                Engine.Instance.Log.Info("Step 3 complete - Weights updated successfully");
 
-                        return true; // dummy return
-                    }).ConfigureAwait(false);
+                return true; // dummy return
+            }).ConfigureAwait(false);
 
-                // Print metrics after full process
-                Engine.Instance.Log.Info(_opusCircuitBreaker.GetMetricsSnapshot());
-            }
-            catch (CircuitBreakerOpenException ex)
-            {
-                Engine.Instance.Log.Error("Circuit open: " + ex.Message);
-                // Fallback logic here (e.g., use cached weights)
-            }
-            catch (Exception ex)
-            {
-                Engine.Instance.Log.Error("Process failed: " + ex.Message);
-            }
-        }
+        // Print metrics after full process
+        Engine.Instance.Log.Info(_opusCircuitBreaker.GetMetricsSnapshot());
+    }
+    catch (CircuitBreakerOpenException ex)
+    {
+        Engine.Instance.Log.Error("Circuit open: " + ex.Message);
+        // Fallback logic here (e.g., use cached weights)
+    }
+    catch (Exception ex)
+    {
+        Engine.Instance.Log.Error("Process failed: " + ex.Message);
+    }
+}
 
-        private async Task<OpusOperationResult<T>> ExecuteSafelyAsync<T>(
-            Func<Task<T>> operation,
-            string operationName,
-            string friendlyErrorMessage)
-        {
-            try
-            {
-                T data = await operation().ConfigureAwait(false);
-                return OpusOperationResult<T>.SuccessWithData(data);
-            }
-            catch (Exception ex)
-            {
-                string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
-                    ? ex.Message
-                    : string.IsNullOrWhiteSpace(friendlyErrorMessage)
-                    ? DefaultFriendlyErrorMessage
-                    : friendlyErrorMessage;
+private async Task<OpusOperationResult<T>> ExecuteSafelyAsync<T>(
+    Func<Task<T>> operation,
+    string operationName,
+    string friendlyErrorMessage)
+{
+    try
+    {
+        T data = await operation().ConfigureAwait(false);
+        return OpusOperationResult<T>.SuccessWithData(data);
+    }
+    catch (Exception ex)
+    {
+        string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+            ? ex.Message
+            : string.IsNullOrWhiteSpace(friendlyErrorMessage)
+            ? DefaultFriendlyErrorMessage
+            : friendlyErrorMessage;
 
-                Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
-                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
-                return failure;
-            }
-        }
+        Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
+        OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+        OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+        return failure;
+    }
+}
 
-        private OpusOperationResult<T> ExecuteSafely<T>(Func<T> operation, string operationName, string friendlyErrorMessage)
-        {
-            try
-            {
-                return OpusOperationResult<T>.SuccessWithData(operation());
-            }
-            catch (Exception ex)
-            {
-                string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
-                    ? ex.Message
-                    : string.IsNullOrWhiteSpace(friendlyErrorMessage)
-                    ? DefaultFriendlyErrorMessage
-                    : friendlyErrorMessage;
+private OpusOperationResult<T> ExecuteSafely<T>(Func<T> operation, string operationName, string friendlyErrorMessage)
+{
+    try
+    {
+        return OpusOperationResult<T>.SuccessWithData(operation());
+    }
+    catch (Exception ex)
+    {
+        string fallbackFriendlyMessage = ex is InvalidOperationException && !string.IsNullOrWhiteSpace(ex.Message)
+            ? ex.Message
+            : string.IsNullOrWhiteSpace(friendlyErrorMessage)
+            ? DefaultFriendlyErrorMessage
+            : friendlyErrorMessage;
 
-                Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
-                OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
-                OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
-                return failure;
-            }
-        }
+        Engine.Instance.Log.Error("[" + operationName + "] Failed: " + ex.ToString());
+        OpusOperationResult<T> failure = OpusOperationResult<T>.FailureWithData(fallbackFriendlyMessage, ex.Message);
+        OpusMessageTrailContext.PrefixCompletedBeforeTrail(failure);
+        return failure;
+    }
+}
 
-        public Task<OpusOperationResult<T>> TryExecuteWithRetryAsync<T>(Func<Task<T>> operation, string operationName, RetryPolicy policy)
-        {
-            return ExecuteSafelyAsync(
-                async () => await ExecuteWithRetryAsync(operation, operationName, policy).ConfigureAwait(false),
-                "TryExecuteWithRetryAsync",
-                "Unable to complete the OPUS retry operation right now.");
-        }
+public Task<OpusOperationResult<T>> TryExecuteWithRetryAsync<T>(Func<Task<T>> operation, string operationName, RetryPolicy policy)
+{
+    return ExecuteSafelyAsync(
+        async () => await ExecuteWithRetryAsync(operation, operationName, policy).ConfigureAwait(false),
+        "TryExecuteWithRetryAsync",
+        "Unable to complete the OPUS retry operation right now.");
+}
     }
 }

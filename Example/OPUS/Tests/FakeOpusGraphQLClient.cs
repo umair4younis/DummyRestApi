@@ -7,6 +7,10 @@ namespace Puma.MDE.OPUS.Tests
     {
         private object _executeResult;
 
+        public string LastQuery { get; private set; }
+
+        public int ExecuteCallCount { get; private set; }
+
         // Pass required parameters to base constructor
         public FakeOpusGraphQLClient(
             OpusHttpClientHandler httpClientHandler,     // can pass null in tests
@@ -25,6 +29,9 @@ namespace Puma.MDE.OPUS.Tests
 
         public override Task<T> ExecuteAsync<T>(string query, object variables = null)
         {
+            LastQuery = query;
+            ExecuteCallCount++;
+
             // Immediately return the pre-set result (no real HTTP call)
             return Task.FromResult((T)_executeResult);
         }

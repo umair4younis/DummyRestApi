@@ -7,7 +7,7 @@ using System.Threading;
 
 namespace Puma.MDE.OPUS.Utilities
 {
-    internal static class OpusMessageTrailContext
+    public static class OpusMessageTrailContext
     {
         private sealed class Scope : IDisposable
         {

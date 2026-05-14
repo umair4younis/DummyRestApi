@@ -127,6 +127,10 @@ namespace Puma.MDE.OPUS
 
         public string GraphQlQuery { get; set; }
 
+        public bool UseAccountSegmentGraphQlQuery { get; set; }
+
+        public string AccountSegmentIds { get; set; }
+
         // Helper to combine URLs cleanly
         private static string CombineUrls(string baseUrl, string suffix)
         {

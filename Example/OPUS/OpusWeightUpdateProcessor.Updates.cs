@@ -5,11 +5,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
+
 namespace Puma.MDE.OPUS
 {
     public partial class OpusWeightUpdateProcessor
     {
-
         /// <summary>
         /// Sends POST request to update asset composition weights (alternative flow).
         /// </summary>
@@ -156,6 +156,28 @@ namespace Puma.MDE.OPUS
 
             Engine.Instance.Log.Info($"UpdateSwapNominalAsync started for swap {swapId}. " +
                                     $"New nominal: {patch.Nominal.Quantity:N2} {patch.Nominal.Unit}");
+            // Log optional percentage fields if provided
+            if (patch.MtmFromFinancing != null)
+                Engine.Instance.Log.Info($"UpdateSwapNominalAsync: mtmFromFinancing={patch.MtmFromFinancing.Quantity:G} {patch.MtmFromFinancing.Unit}");
+            else
+                Engine.Instance.Log.Debug($"UpdateSwapNominalAsync: mtmFromFinancing not provided (will be omitted from request).");
+
+            if (patch.SwapValue != null)
+                Engine.Instance.Log.Info($"UpdateSwapNominalAsync: swapValue={patch.SwapValue.Quantity:G} {patch.SwapValue.Unit}");
+            else
+                Engine.Instance.Log.Debug($"UpdateSwapNominalAsync: swapValue not provided (will be omitted from request).");
+
+            // Validate percentage fields are within sensible range when supplied
+            if (patch.MtmFromFinancing != null && patch.MtmFromFinancing.Quantity < 0m)
+            {
+                Engine.Instance.Log.Error($"UpdateSwapNominalAsync: mtmFromFinancing quantity {patch.MtmFromFinancing.Quantity} is negative. Swap {swapId}.");
+                throw new ArgumentException("mtmFromFinancing quantity must be non-negative.", nameof(patch));
+            }
+            if (patch.SwapValue != null && patch.SwapValue.Quantity < 0m)
+            {
+                Engine.Instance.Log.Error($"UpdateSwapNominalAsync: swapValue quantity {patch.SwapValue.Quantity} is negative. Swap {swapId}.");
+                throw new ArgumentException("swapValue quantity must be non-negative.", nameof(patch));
+            }
 
             var validation = await ValidateSwapAsync(
                 swapId,
@@ -187,16 +209,28 @@ namespace Puma.MDE.OPUS
                         $"Significant notional change detected for swap {swapId}: " +
                         $"{validation.CurrentNotional:N2} → {patch.Nominal.Quantity:N2} ({changePercent:F1}%)");
                 }
+                else
+                {
+                    Engine.Instance.Log.Debug($"Notional change for swap {swapId}: " +
+                        $"{validation.CurrentNotional:N2} → {patch.Nominal.Quantity:N2} ({changePercent:F1}%) — within normal range.");
+                }
             }
 
             Engine.Instance.Log.Info($"UpdateSwapNominalAsync validation passed: {validation.GetSummary()}");
+            Engine.Instance.Log.Debug($"UpdateSwapNominalAsync sending PATCH for swap {swapId}. " +
+                $"Nominal={patch.Nominal.Quantity:N2} {patch.Nominal.Unit}, " +
+                $"MtmFromFinancing={patch.MtmFromFinancing?.ToString() ?? "<omitted>"}, " +
+                $"SwapValue={patch.SwapValue?.ToString() ?? "<omitted>"}.");
 
             string endpoint = $"/swaps/{swapId}";
 
             try
             {
                 await _opusApiClient.PatchSwapAsync(endpoint, swapId, patch).ConfigureAwait(false);
-                Engine.Instance.Log.Info($"Successfully updated nominal for swap {swapId} to {patch.Nominal.Quantity:N2}");
+                Engine.Instance.Log.Info($"Successfully updated swap {swapId}. " +
+                    $"Nominal={patch.Nominal.Quantity:N2} {patch.Nominal.Unit}" +
+                    (patch.MtmFromFinancing != null ? $", MtmFromFinancing={patch.MtmFromFinancing}" : "") +
+                    (patch.SwapValue != null ? $", SwapValue={patch.SwapValue}" : "") + ".");
             }
             catch (Exception ex)
             {

@@ -16,6 +16,8 @@ namespace Puma.MDE.OPUS.Tests
             ClientSecret = "fake-secret";
             ClientCertPath = "fake-cert.pfx";        // can stay, will be ignored
             ClientCertPassword = "fake-password";
+            UseAccountSegmentGraphQlQuery = false;
+            AccountSegmentIds = "TEST-ACCOUNT-SEGMENT-ID";
         }
     }
 }

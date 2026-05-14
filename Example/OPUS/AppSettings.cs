@@ -2,7 +2,7 @@
 using System.Configuration;
 
 
-namespace Puma.MDE
+namespace Puma.MDE.OPUS
 {
     public static class AppSettings
     {
@@ -18,12 +18,8 @@ namespace Puma.MDE
 
             // Trim + treat empty/whitespace-only as missing
             if (string.IsNullOrWhiteSpace(value))
-            {
-                Engine.Instance.Log.Debug($"[AppSettings] Key '{key}' not found, using fallback: {(fallback == null ? "null" : "***")}");
                 return fallback;
-            }
 
-            Engine.Instance.Log.Debug($"[AppSettings] Key '{key}' found and trimmed");
             return value.Trim();
         }
 
@@ -32,15 +28,12 @@ namespace Puma.MDE
         /// </summary>
         public static string GetRequired(string key)
         {
-            Engine.Instance.Log.Info($"[AppSettings] Retrieving required setting: {key}");
             string value = Get(key);
             if (string.IsNullOrWhiteSpace(value))
             {
-                Engine.Instance.Log.Error($"[AppSettings] Required key '{key}' is missing or empty in app.config");
                 throw new ConfigurationErrorsException(
                     $"Required appSetting key '{key}' is missing or empty in app.config.");
             }
-            Engine.Instance.Log.Debug($"[AppSettings] Required key '{key}' successfully retrieved");
             return value;
         }
 
@@ -51,18 +44,12 @@ namespace Puma.MDE
         {
             string raw = Get(key);
             if (string.IsNullOrWhiteSpace(raw))
-            {
-                Engine.Instance.Log.Debug($"[AppSettings] Int key '{key}' missing, using fallback: {fallback}");
                 return fallback;
-            }
 
             if (int.TryParse(raw, out int value))
-            {
-                Engine.Instance.Log.Debug($"[AppSettings] Int key '{key}' parsed successfully: {value}");
                 return value;
-            }
 
-            Engine.Instance.Log.Warn($"[AppSettings] Int key '{key}' could not be parsed from '{raw}', using fallback: {fallback}");
+            // You can also log/warn here if desired
             return fallback;
         }
 
@@ -73,26 +60,16 @@ namespace Puma.MDE
         {
             string raw = Get(key)?.ToLowerInvariant();
             if (string.IsNullOrWhiteSpace(raw))
-            {
-                Engine.Instance.Log.Debug($"[AppSettings] Bool key '{key}' missing, using fallback: {fallback}");
                 return fallback;
-            }
 
             // common true values
             if (raw == "true" || raw == "1" || raw == "yes" || raw == "on")
-            {
-                Engine.Instance.Log.Debug($"[AppSettings] Bool key '{key}' parsed as TRUE from '{raw}'");
                 return true;
-            }
 
             // common false values
             if (raw == "false" || raw == "0" || raw == "no" || raw == "off")
-            {
-                Engine.Instance.Log.Debug($"[AppSettings] Bool key '{key}' parsed as FALSE from '{raw}'");
                 return false;
-            }
 
-            Engine.Instance.Log.Warn($"[AppSettings] Bool key '{key}' could not be parsed from '{raw}', using fallback: {fallback}");
             return fallback;
         }
 

@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puma.MDE.Data;
+using Puma.MDE.Data.Manast;
 using Puma.MDE.OPUS;
 using Puma.MDE.OPUS.Exceptions;
 using Puma.MDE.OPUS.Models;
@@ -386,7 +387,7 @@ namespace Puma.MDE.Tests
                 breaker);
 
             SwapRawOrder fullUnwind;
-            SwapOrder importedOrder;
+            ManastOrderDTO importedOrder;
             List<OrderManager.Error> errors;
             service.ImportFullUnwindOrder(new SwapAccount { AccountName = "ACC-CB", Currency = "EUR" }, out fullUnwind, out importedOrder, out errors);
 
@@ -578,9 +579,9 @@ namespace Puma.MDE.Tests
 
         private sealed class NoopImportGateway : ISwapOrderImportGateway
         {
-            public bool ImportOrder(SwapRawOrder rawOrder, out SwapOrder importedOrder, out List<OrderManager.Error> errors)
+            public bool ImportOrder(SwapRawOrder rawOrder, out ManastOrderDTO importedOrder, out List<OrderManager.Error> errors)
             {
-                importedOrder = new SwapOrder();
+                importedOrder = new ManastOrderDTO();
                 errors = new List<OrderManager.Error>();
                 return true;
             }

@@ -83,6 +83,7 @@
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.Core.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.DeltaFlows.cs" />
+    <Compile Include="Tests\OpusWeightUpdateProcessorTests.SwapNominalPatchFields.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.SwapLifecycle.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.TrsLifecycle.cs" />
     <Compile Include="Tests\OpusWeightUpdateProcessorTests.ValidationAndDelta.cs" />

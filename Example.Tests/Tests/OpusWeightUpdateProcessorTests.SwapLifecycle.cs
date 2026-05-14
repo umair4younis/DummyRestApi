@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using System.Net;
 using Puma.MDE.OPUS.Exceptions;
 
+
 namespace Puma.MDE.Tests
 {
     /// <summary>
@@ -96,7 +97,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(_fakeApi.PostWithResponseAsyncCalled);
         }
 
-
         [TestMethod]
         public async Task CreateSwapQuoteAsync_ValidationFails_ReturnsFailureResult()
         {
@@ -113,7 +113,6 @@ namespace Puma.MDE.Tests
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.ErrorMessage));
         }
-
 
         [TestMethod]
         public async Task CreateSwapQuoteAsync_ApiFails_ReturnsFailureResult()
@@ -166,7 +165,6 @@ namespace Puma.MDE.Tests
             Assert.AreEqual(105000m, result.Resource.Quotes[1].Value.Quantity);
         }
 
-
         [TestMethod]
         public async Task GetSwapQuotesAsync_SwapNotFound_ReturnsFailureResult()
         {
@@ -180,7 +178,6 @@ namespace Puma.MDE.Tests
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.ErrorMessage));
         }
-
 
         [TestMethod]
         public async Task UpdateSwapNominalAsync_NotionalTooLow_ThrowsIfValidationEnforcesMin()
@@ -200,7 +197,6 @@ namespace Puma.MDE.Tests
             await _processor.TryUpdateSwapNominalAsync(swapId, patch);
             Assert.IsTrue(_fakeApi.PatchAsyncCalled);
         }
-
 
         [TestMethod]
         public async Task UpdateSwapNominalAsync_ValidationWarning_LogsButSucceeds()
@@ -223,7 +219,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(_fakeApi.PatchAsyncCalled);
             // You can assert _fakeLogger.WarnLogs if you inject logger
         }
-
 
         /// <summary>
         /// Tests that CreateSwapQuoteAsync logs the start of the operation, performs validation 
@@ -255,7 +250,6 @@ namespace Puma.MDE.Tests
 
         }
 
-
         /// <summary>
         /// Tests that GetSwapQuotesAsync logs the operation start with marketplace info,
         /// performs validation using the new model, and logs the number of quotes retrieved.
@@ -275,7 +269,6 @@ namespace Puma.MDE.Tests
 
         }
 
-
         /// <summary>
         /// Tests that UpdateSwapNominalAsync logs the start with new nominal value,
         /// performs validation using the new model, detects significant notional change (>50%), 
@@ -290,6 +283,8 @@ namespace Puma.MDE.Tests
             {
                 Nominal = new AmountValue { Quantity = 50000000m, Unit = "EUR", Type = "MONEY" }
             };
+            patch.MtmFromFinancing = new PercentAmountValue { Quantity = 10m, Unit = "%" };
+            patch.SwapValue = new PercentAmountValue { Quantity = 12.3m, Unit = "%" };
 
             var mockSwap = new TotalReturnSwapResponse
             {
@@ -302,7 +297,6 @@ namespace Puma.MDE.Tests
             await _processor.TryUpdateSwapNominalAsync(swapId, patch);
 
         }
-
 
         /// <summary>
         /// Verifies that UpdateSwapAssetAtMarketplacesAsync successfully calls the PATCH endpoint 
@@ -346,7 +340,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(_fakeApi.PatchAsyncCalled, "PatchAsync should have been called on the API client");
         }
 
-
         /// <summary>
         /// Ensures passing null SwapPatch throws ArgumentException immediately (defensive validation).
         /// </summary>
@@ -360,7 +353,6 @@ namespace Puma.MDE.Tests
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.ErrorMessage));
         }
-
 
         /// <summary>
         /// Validates that an empty/invalid SwapPatch (no nominal and no assetAtMarketplaces entries) 
@@ -379,7 +371,6 @@ namespace Puma.MDE.Tests
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.ErrorMessage));
         }
-
 
         /// <summary>
         /// Confirms that swap validation failure (e.g. 404 Not Found) causes 
@@ -403,7 +394,6 @@ namespace Puma.MDE.Tests
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.ErrorMessage));
         }
-
 
         /// <summary>
         /// Verifies that SwapPatch with nominal and assetAtMarketplaces serializes correctly 
@@ -444,7 +434,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(json.Contains("20000000"), "Should serialize nominal quantity correctly");
         }
 
-
         /// <summary>
         /// Ensures that AssetAtMarketplaceDetail can be serialized independently with all new fields.
         /// </summary>
@@ -469,7 +458,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(json.Contains("\"reference\":true"));
             Assert.IsTrue(json.Contains("\"quoteSource\""));
         }
-
 
         /// <summary>
         /// Verifies that GetSwapQuotesAsync performs validation using the new TotalReturnSwapResponse model 
@@ -521,7 +509,6 @@ namespace Puma.MDE.Tests
             Assert.AreEqual(105000m, result.Resource.Quotes[1].Value.Quantity);
         }
 
-
         /// <summary>
         /// Verifies detailed logging in the success path of UpdateSwapAssetAtMarketplacesAsync:
         /// - Start message with swap ID and update summary (nominal + assetAtMarketplaces)
@@ -566,7 +553,6 @@ namespace Puma.MDE.Tests
 
         }
 
-
         /// <summary>
         /// Tests nominal-only update (assetAtMarketplaces omitted). 
         /// Ensures the method correctly handles partial updates containing only nominal 
@@ -596,7 +582,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(_fakeApi.PatchAsyncCalled, "PatchAsync should be called for nominal-only updates");
         }
 
-
         /// <summary>
         /// Verifies that UpdateSwapNominalAsync successfully calls the PATCH endpoint 
         /// when updating only the nominal value of a swap. 
@@ -611,6 +596,8 @@ namespace Puma.MDE.Tests
             {
                 Nominal = new AmountValue { Quantity = 20000000m, Unit = "EUR", Type = "MONEY" }
             };
+            patch.MtmFromFinancing = new PercentAmountValue { Quantity = 10m, Unit = "%" };
+            patch.SwapValue = new PercentAmountValue { Quantity = 12.3m, Unit = "%" };
 
             var mockSwapResponse = new TotalReturnSwapResponse
             {
@@ -626,7 +613,6 @@ namespace Puma.MDE.Tests
             Assert.IsTrue(_fakeApi.PatchAsyncCalled, "PatchAsync should have been called for nominal update");
         }
 
-
         /// <summary>
         /// Tests that UpdateSwapNominalAsync logs the start of the operation with the new nominal value,
         /// performs validation using the new model, and logs successful update.
@@ -640,6 +626,8 @@ namespace Puma.MDE.Tests
             {
                 Nominal = new AmountValue { Quantity = 20000000m, Unit = "EUR", Type = "MONEY" }
             };
+            patch.MtmFromFinancing = new PercentAmountValue { Quantity = 10m, Unit = "%" };
+            patch.SwapValue = new PercentAmountValue { Quantity = 12.3m, Unit = "%" };
 
             var mockSwapResponse = new TotalReturnSwapResponse
             {
@@ -656,7 +644,6 @@ namespace Puma.MDE.Tests
 
         }
 
-
         /// <summary>
         /// Verifies that a significant notional change (>50%) generates a detailed warning log 
         /// containing old and new values and the percentage change, while still allowing the update to succeed.
@@ -671,6 +658,8 @@ namespace Puma.MDE.Tests
             {
                 Nominal = new AmountValue { Quantity = 50000000m, Unit = "EUR", Type = "MONEY" }
             };
+            patch.MtmFromFinancing = new PercentAmountValue { Quantity = 10m, Unit = "%" };
+            patch.SwapValue = new PercentAmountValue { Quantity = 12.3m, Unit = "%" };
 
             var mockSwapResponse = new TotalReturnSwapResponse
             {
@@ -684,7 +673,6 @@ namespace Puma.MDE.Tests
 
 
         }
-
 
         /// <summary>
         /// Ensures that small notional changes (<50%) do NOT trigger a significant change warning.
@@ -699,6 +687,8 @@ namespace Puma.MDE.Tests
             {
                 Nominal = new AmountValue { Quantity = 12000000m, Unit = "EUR", Type = "MONEY" }
             };
+            patch.MtmFromFinancing = new PercentAmountValue { Quantity = 10m, Unit = "%" };
+            patch.SwapValue = new PercentAmountValue { Quantity = 12.3m, Unit = "%" };
 
             var mockSwapResponse = new TotalReturnSwapResponse
             {
@@ -712,7 +702,6 @@ namespace Puma.MDE.Tests
 
 
         }
-
 
         /// <summary>
         /// Validates that UpdateSwapNominalAsync throws InvalidOperationException 
@@ -735,6 +724,5 @@ namespace Puma.MDE.Tests
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.FriendlyMessage));
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.ErrorMessage));
         }
-
     }
 }

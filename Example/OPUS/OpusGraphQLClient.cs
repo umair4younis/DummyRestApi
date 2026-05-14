@@ -17,6 +17,7 @@ namespace Puma.MDE.OPUS
         private readonly OpusConfiguration _opusConfiguration;
         public OpusCircuitBreaker _opusCircuitBreaker;
         public HttpClient _httpClient;
+        public OpusConfiguration Configuration => _opusConfiguration;
 
         public OpusGraphQLClient(OpusHttpClientHandler opusHttpClientHandler,
             OpusTokenProvider opusTokenProvider, OpusConfiguration opusConfiguration)
@@ -50,6 +51,7 @@ namespace Puma.MDE.OPUS
         public virtual async Task<T> ExecuteAsync<T>(string query, object variables = null)
         {
             Engine.Instance.Log.Info($"[OpusGraphQLClient] ExecuteAsync started for query type: {typeof(T).Name}");
+            Engine.Instance.Log.Debug($"[OpusGraphQLClient] Query length: {(query == null ? 0 : query.Length)}; Variables present: {variables != null}");
 
             try
             {
@@ -62,6 +64,7 @@ namespace Puma.MDE.OPUS
                 };
 
                 string json = JsonConvert.SerializeObject(request);
+                Engine.Instance.Log.Debug($"[OpusGraphQLClient] Serialized request payload length: {json.Length}");
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 _httpClient.DefaultRequestHeaders.Authorization =
@@ -84,7 +87,7 @@ namespace Puma.MDE.OPUS
                     }
 
                     string responseJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    Engine.Instance.Log.Debug($"[OpusGraphQLClient] Response received, parsing...");
+                    Engine.Instance.Log.Debug($"[OpusGraphQLClient] Response received (length={responseJson.Length}), parsing...");
 
                     var graphQLResponse = JsonConvert.DeserializeObject<GraphQLResponse<T>>(responseJson);
 

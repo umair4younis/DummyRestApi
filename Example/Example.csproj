@@ -76,7 +76,6 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AppSettings.cs" />
     <Compile Include="Common\Audit.cs" />
     <Compile Include="Common\Configuration\IConfig.cs" />
     <Compile Include="Common\DataBase\DataAccessBase.cs" />
@@ -326,6 +325,7 @@
     <Compile Include="Engine.cs" />
     <Compile Include="Engine.Runtime.cs" />
     <Compile Include="Engine.Logging.cs" />
+    <Compile Include="OPUS\AppSettings.cs" />
     <Compile Include="OPUS\Attributes\BasicEmailAttribute.cs" />
     <Compile Include="OPUS\Attributes\EmailDomainResolvableAttribute.cs" />
     <Compile Include="OPUS\Attributes\EmailDomainWhitelistAttribute.cs" />
@@ -351,6 +351,7 @@
     <Compile Include="OPUS\Models\AccountSegmentDelta.cs" />
     <Compile Include="OPUS\Models\AmountValue.cs" />
     <Compile Include="OPUS\Models\AssetAtMarketplaceDetail.cs" />
+    <Compile Include="OPUS\Models\AssetAtMarketplacePatch.cs" />
     <Compile Include="OPUS\Models\AssetCompositionPatchPayload.cs" />
     <Compile Include="OPUS\Models\AssetEdge.cs" />
     <Compile Include="OPUS\Models\AssetNode.cs" />
@@ -368,11 +369,22 @@
     <Compile Include="OPUS\Models\OpusOperationResult.cs" />
     <Compile Include="OPUS\Models\OpusApiResponse.cs" />
     <Compile Include="OPUS\Models\OpusTokenResponse.cs" />
+    <Compile Include="OPUS\Models\OpuxApiResponse.cs" />
     <Compile Include="OPUS\Models\OpuxErrorDetail.cs" />
     <Compile Include="OPUS\Models\OpuxWarningDetail.cs" />
     <Compile Include="OPUS\Models\Pagination.cs" />
+    <Compile Include="OPUS\Models\PercentAmountValue.cs" />
     <Compile Include="OPUS\Models\Portfolio.cs" />
     <Compile Include="OPUS\Models\PortfolioData.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlAssetComposition.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlData.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlMember.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlMemberAsset.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlNominal.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlPortfolio.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlPosition.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlRateable.cs" />
+    <Compile Include="OPUS\Models\PortfolioGraphQlSymbol.cs" />
     <Compile Include="OPUS\Models\QuoteGetResource.cs" />
     <Compile Include="OPUS\Models\QuotePatchResource.cs" />
     <Compile Include="OPUS\Models\QuotePostResource.cs" />
@@ -394,6 +406,7 @@
     <Compile Include="OPUS\Models\Symbol.cs" />
     <Compile Include="OPUS\Models\TotalReturnSwapResponse.cs" />
     <Compile Include="OPUS\Models\TradeCurrency.cs" />
+    <Compile Include="OPUS\Models\ValidationResultcs.cs" />
     <Compile Include="OPUS\Models\ValidationResultOpus.cs" />
     <Compile Include="OPUS\Models\WeightObject.cs" />
     <Compile Include="OPUS\OpusApiClient.Swaps.cs" />

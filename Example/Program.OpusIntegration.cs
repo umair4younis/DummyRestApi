@@ -69,8 +69,12 @@ namespace Puma.MDE.Test
                     ClientSecret = AppSettings.Get("Opus.ClientSecret"),
                     ClientCertPath = AppSettings.Get("Opus.ClientCertPath"),
                     ClientCertPassword = AppSettings.Get("Opus.ClientCertPassword"),
-                    GraphQlQuery = AppSettings.Get("Opus.GraphQLQuery")
+                    GraphQlQuery = AppSettings.Get("Opus.GraphQLQuery"),
+                    UseAccountSegmentGraphQlQuery = AppSettings.GetBool("Opus.UseAccountSegmentGraphQlQuery", false),
+                    AccountSegmentIds = AppSettings.Get("Opus.AccountSegmentIds")
                 };
+
+                Engine.Instance.Log.Info(OpusIntegrationLogPrefix + "UseAccountSegmentGraphQlQuery=" + opusConfiguration.UseAccountSegmentGraphQlQuery);
 
                 if (string.IsNullOrWhiteSpace(opusConfiguration.BaseUrl) ||
                     string.IsNullOrWhiteSpace(opusConfiguration.RestUrl) ||
@@ -154,7 +158,12 @@ namespace Puma.MDE.Test
                     {
                         Nominal = new AmountValue { Quantity = OpusWeightUpdateProcessor.SwapNotional, Unit = $"{OpusWeightUpdateProcessor.Currency}", Type = "MONEY" }
                     };
+                    swapNominalPatch.MtmFromFinancing = PercentAmountValue.FromPercent(OpusWeightUpdateProcessor.MtmFromFinancing);
+                    swapNominalPatch.SwapValue = PercentAmountValue.FromPercent(OpusWeightUpdateProcessor.SwapValue);
                     Engine.Instance.Log.Info(swapNominalPatch);
+                    Engine.Instance.Log.Debug($"SwapNominalPatch Nominal: {swapNominalPatch.Nominal.Quantity:N2} {swapNominalPatch.Nominal.Unit} (type={swapNominalPatch.Nominal.Type})");
+                    Engine.Instance.Log.Debug($"SwapNominalPatch MtmFromFinancing: {swapNominalPatch.MtmFromFinancing}");
+                    Engine.Instance.Log.Debug($"SwapNominalPatch SwapValue: {swapNominalPatch.SwapValue}");
 
                     OpusOperationResult nominalUpdateResult = await processor.TryUpdateSwapNominalAsync(swapId, swapNominalPatch).ConfigureAwait(false);
                     if (!nominalUpdateResult.IsSuccess)

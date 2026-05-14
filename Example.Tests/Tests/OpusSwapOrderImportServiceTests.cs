@@ -1,5 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Puma.MDE.Data;
+using Puma.MDE.Data.Manast;
 using Puma.MDE.OPUS.OrderImport;
 using Puma.MDE.SwapUtils;
 using System;
@@ -94,7 +95,7 @@ namespace Puma.MDE.Tests
                 gateway);
 
             SwapRawOrder fullUnwind;
-            SwapOrder importedOrder;
+            ManastOrderDTO importedOrder;
             List<OrderManager.Error> errors;
 
             service.ImportFullUnwindOrder(new SwapAccount { AccountName = "ACC-3" }, out fullUnwind, out importedOrder, out errors);
@@ -220,17 +221,17 @@ namespace Puma.MDE.Tests
         {
             public FakeSwapOrderImportGateway()
             {
-                ImportedOrder = new SwapOrder();
+                ImportedOrder = new ManastOrderDTO();
                 Errors = new List<OrderManager.Error>();
             }
 
             public SwapRawOrder ReceivedOrder { get; private set; }
 
-            public SwapOrder ImportedOrder { get; private set; }
+            public ManastOrderDTO ImportedOrder { get; private set; }
 
             public List<OrderManager.Error> Errors { get; private set; }
 
-            public bool ImportOrder(SwapRawOrder rawOrder, out SwapOrder importedOrder, out List<OrderManager.Error> errors)
+            public bool ImportOrder(SwapRawOrder rawOrder, out ManastOrderDTO importedOrder, out List<OrderManager.Error> errors)
             {
                 ReceivedOrder = rawOrder;
                 importedOrder = ImportedOrder;
