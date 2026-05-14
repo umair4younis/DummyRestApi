@@ -3,11 +3,11 @@ using Puma.MDE.OPUS.Models;
 using System;
 using System.Collections.Generic;
 
+
 namespace Puma.MDE.Test
 {
     partial class Program
     {
-
         internal static string BuildGraphQlAssetQuery(string parentAssetId)
         {
             return
@@ -31,7 +31,7 @@ namespace Puma.MDE.Test
                     "}";
         }
 
-                internal static List<object[]> BuildDefaultFilteredPortfolioRows()
+        internal static List<object[]> BuildDefaultFilteredPortfolioRows()
         {
             return new List<object[]>
             {

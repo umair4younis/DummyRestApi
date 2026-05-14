@@ -115,7 +115,6 @@ namespace Puma.MDE.OPUS.OrderImport
             Engine.Instance.Log.Info("[OpusSwapOrderImportService] Import full unwind workflow started.");
             GetFullUnwindOrder(selectedAccount, out fullUnwind);
             SwapRawOrder orderToImport = fullUnwind;
-
             ManastOrderDTO localImportedOrder = null;
             List<OrderManager.Error> localErrors = null;
             ExecuteWithRetryAndCircuitBreaker(
