@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using Puma.MDE.Data.Manast;
 
 namespace Puma.MDE.SwapAccountPricing
 {
@@ -2137,6 +2138,11 @@ namespace Puma.MDE.SwapAccountPricing
                 Engine.Instance.Log.Error(methodName + " : exception caught for '" + pr.Instrument.InstrumentName + "' of '" + pr.Account.AccountName + "' : " + ex.Message);
             }
             return false;
+        }
+
+        internal static double getIndexFactor(ManastAccountDTO ar, DateTime now)
+        {
+            throw new NotImplementedException();
         }
 
         #endregion

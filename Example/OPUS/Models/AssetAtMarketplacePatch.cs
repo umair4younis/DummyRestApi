@@ -1,5 +1,4 @@
 ﻿using Newtonsoft.Json;
-using System.Collections.Generic;
 
 namespace Puma.MDE.OPUS.Models
 {

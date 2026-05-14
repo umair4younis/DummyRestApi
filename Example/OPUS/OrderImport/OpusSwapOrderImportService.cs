@@ -1,4 +1,5 @@
 ﻿using Puma.MDE.Data;
+using Puma.MDE.Data.Manast;
 using Puma.MDE.OPUS.Exceptions;
 using Puma.MDE.OPUS.Models;
 using Puma.MDE.SwapUtils;
@@ -108,14 +109,14 @@ namespace Puma.MDE.OPUS.OrderImport
         public void ImportFullUnwindOrder(
             SwapAccount selectedAccount,
             out SwapRawOrder fullUnwind,
-            out SwapOrder importedOrder,
+            out ManastOrderDTO importedOrder,
             out List<OrderManager.Error> errors)
         {
             Engine.Instance.Log.Info("[OpusSwapOrderImportService] Import full unwind workflow started.");
             GetFullUnwindOrder(selectedAccount, out fullUnwind);
             SwapRawOrder orderToImport = fullUnwind;
 
-            SwapOrder localImportedOrder = null;
+            ManastOrderDTO localImportedOrder = null;
             List<OrderManager.Error> localErrors = null;
             ExecuteWithRetryAndCircuitBreaker(
                 () =>

@@ -103,22 +103,22 @@ namespace Puma.MDE.OPUS
 
             OpusCircuitBreakerSettings globalDefaults = new OpusCircuitBreakerSettings
             {
-                FailureThreshold = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".FailureThreshold", hardcodedFallback.FailureThreshold),
-                BreakSeconds = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".BreakSeconds", hardcodedFallback.BreakSeconds),
-                MaxRetries = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".Retries", hardcodedFallback.MaxRetries),
-                BaseRetryDelayMs = Puma.MDE.AppSettings.GetInt(DefaultConfigPrefix + ".BaseRetryDelayMs", hardcodedFallback.BaseRetryDelayMs),
-                BackoffFactor = Puma.MDE.AppSettings.GetAs(DefaultConfigPrefix + ".BackoffFactor", ParseDoubleInvariant, hardcodedFallback.BackoffFactor),
-                JitterMaxFactor = Puma.MDE.AppSettings.GetAs(DefaultConfigPrefix + ".JitterMaxFactor", ParseDoubleInvariant, hardcodedFallback.JitterMaxFactor)
+                FailureThreshold = AppSettings.GetInt(DefaultConfigPrefix + ".FailureThreshold", hardcodedFallback.FailureThreshold),
+                BreakSeconds = AppSettings.GetInt(DefaultConfigPrefix + ".BreakSeconds", hardcodedFallback.BreakSeconds),
+                MaxRetries = AppSettings.GetInt(DefaultConfigPrefix + ".Retries", hardcodedFallback.MaxRetries),
+                BaseRetryDelayMs = AppSettings.GetInt(DefaultConfigPrefix + ".BaseRetryDelayMs", hardcodedFallback.BaseRetryDelayMs),
+                BackoffFactor = AppSettings.GetAs(DefaultConfigPrefix + ".BackoffFactor", ParseDoubleInvariant, hardcodedFallback.BackoffFactor),
+                JitterMaxFactor = AppSettings.GetAs(DefaultConfigPrefix + ".JitterMaxFactor", ParseDoubleInvariant, hardcodedFallback.JitterMaxFactor)
             };
 
             OpusCircuitBreakerSettings resolved = new OpusCircuitBreakerSettings
             {
-                FailureThreshold = Puma.MDE.AppSettings.GetInt(prefix + ".FailureThreshold", globalDefaults.FailureThreshold),
-                BreakSeconds = Puma.MDE.AppSettings.GetInt(prefix + ".BreakSeconds", globalDefaults.BreakSeconds),
-                MaxRetries = Puma.MDE.AppSettings.GetInt(prefix + ".Retries", globalDefaults.MaxRetries),
-                BaseRetryDelayMs = Puma.MDE.AppSettings.GetInt(prefix + ".BaseRetryDelayMs", globalDefaults.BaseRetryDelayMs),
-                BackoffFactor = Puma.MDE.AppSettings.GetAs(prefix + ".BackoffFactor", ParseDoubleInvariant, globalDefaults.BackoffFactor),
-                JitterMaxFactor = Puma.MDE.AppSettings.GetAs(prefix + ".JitterMaxFactor", ParseDoubleInvariant, globalDefaults.JitterMaxFactor)
+                FailureThreshold = AppSettings.GetInt(prefix + ".FailureThreshold", globalDefaults.FailureThreshold),
+                BreakSeconds = AppSettings.GetInt(prefix + ".BreakSeconds", globalDefaults.BreakSeconds),
+                MaxRetries = AppSettings.GetInt(prefix + ".Retries", globalDefaults.MaxRetries),
+                BaseRetryDelayMs = AppSettings.GetInt(prefix + ".BaseRetryDelayMs", globalDefaults.BaseRetryDelayMs),
+                BackoffFactor = AppSettings.GetAs(prefix + ".BackoffFactor", ParseDoubleInvariant, globalDefaults.BackoffFactor),
+                JitterMaxFactor = AppSettings.GetAs(prefix + ".JitterMaxFactor", ParseDoubleInvariant, globalDefaults.JitterMaxFactor)
             };
 
             if (resolved.FailureThreshold < 1)
